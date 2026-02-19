@@ -1,0 +1,5 @@
+sphinx
+myst-parser
+furo
+sphinx-autobuild
+sphinx-js
