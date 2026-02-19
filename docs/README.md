@@ -9,7 +9,8 @@ The pages in `docs/source/` were initialized from the former repository README f
 From the repo root:
 
 ```bash
-conda activate SolarisEngine
+conda env create -f docs/env.yaml
+conda activate solaris-docs
 python -m pip install -r docs/requirements.txt
 ```
 

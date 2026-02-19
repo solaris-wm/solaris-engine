@@ -1,5 +1,6 @@
 sphinx
 myst-parser
-furo
+furo==2023.9.10
+accessible-pygments==0.0.4
 sphinx-autobuild
 sphinx-js
