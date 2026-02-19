@@ -57,7 +57,7 @@ An episode always consists of ``N`` actions and ``N`` observations, with the obs
 making the observation a causal consequence of applying the action.
 
 The scripts :ref:`prepare_train_dataset.py <prepare-train-dataset-py>`, :ref:`split_train_test.py <split-train-test-py>`, and :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>` validate and transform the output of ``SolarisEngine`` 
-to the final training and evaluation dataset formats Solaris model code expects.
+to the final training and evaluation dataset formats `Solaris <https://github.com/solaris-wm/solaris>`_ model code expects.
 
 The optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions.
  It's a helpful debug tool to see how well all bots behave in an episode and that their actions are properly aligned with the observations.
