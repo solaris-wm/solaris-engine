@@ -437,6 +437,15 @@ def main():
         default=10,
         help="Top N percentile to use for similarity thresholding (default: 10, meaning top 10%%)",
     )
+    parser.add_argument(
+        "--out-path",
+        type=str,
+        default=None,
+        help=(
+            "Output path for aggregated water episodes JSON. "
+            "If not set, writes to <base-path>/all_water_episodes.json"
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -469,6 +478,7 @@ def main():
     # Process each batch folder
     total_water = 0
     total_non_water = 0
+    all_water_episodes: List[Dict[str, str]] = []
 
     for batch_folder in batch_folders:
         batch_name = os.path.basename(batch_folder)
@@ -501,6 +511,28 @@ def main():
 
         total_water += len(water_episodes)
         total_non_water += len(non_water_episodes)
+
+        # Accumulate for aggregated output (batch_id, episode_id, instance_id)
+        for ep in water_episodes:
+            all_water_episodes.append(
+                {
+                    "batch_id": batch_name,
+                    "episode_id": str(ep.episode_id),
+                    "instance_id": str(ep.instance_id),
+                }
+            )
+
+    # Write aggregated water episodes to a single JSON file
+    out_path = args.out_path
+    if out_path is None:
+        out_path = os.path.join(args.base_path, "all_water_episodes.json")
+    out_path = os.path.abspath(out_path)
+    out_dir = os.path.dirname(out_path)
+    if out_dir:
+        os.makedirs(out_dir, exist_ok=True)
+    with open(out_path, "w") as f:
+        json.dump(all_water_episodes, f, indent=2)
+    print(f"\nWrote {len(all_water_episodes)} water episodes to {out_path}")
 
     # Final summary
     print(f"\n{'='*60}")
