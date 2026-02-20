@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Batch filter water episodes by detecting the oxygen bar HUD element in video frames.
+Batch detect water episodes by detecting the oxygen bar HUD element in video frames.
 
-This script uses multiprocessing to process all video files in batch_2_split_*/aligned/
-directories and outputs JSON files categorizing episodes as water or non-water.
+This script uses multiprocessing to process all video files in all 
+batch directories and outputs JSON files categorizing episodes as water or non-water.
 
 Episodes are processed as Alpha-Bravo pairs - if either video shows underwater indicators,
 the entire pair is classified as a water episode.
@@ -45,7 +45,6 @@ class EpisodePairResult:
 
     episode_id: str
     instance_id: str
-    split_number: str
     alpha_filename: Optional[str]
     bravo_filename: Optional[str]
     alpha_top_percentile: Optional[float]
@@ -58,7 +57,6 @@ class EpisodePairResult:
         return {
             "episode_id": self.episode_id,
             "instance_id": self.instance_id,
-            "split_number": self.split_number,
             "alpha_filename": self.alpha_filename,
             "bravo_filename": self.bravo_filename,
             "alpha_top_percentile_similarity": self.alpha_top_percentile,
@@ -254,8 +252,8 @@ def group_videos_by_episode_pair(
     return pairs
 
 
-def process_split_folder(
-    split_folder: str,
+def process_batch_folder(
+    batch_folder: str,
     template_rgb: np.ndarray,
     alpha_mask: np.ndarray,
     threshold: float,
@@ -264,12 +262,12 @@ def process_split_folder(
     top_percentile: int,
 ) -> Tuple[List[EpisodePairResult], List[EpisodePairResult]]:
     """
-    Process all videos in a split folder and categorize episodes.
+    Process all videos in a batch folder and categorize episodes.
 
     Returns:
         Tuple of (water_episodes, non_water_episodes)
     """
-    aligned_folder = os.path.join(split_folder, "aligned")
+    aligned_folder = os.path.join(batch_folder, "aligned")
 
     if not os.path.exists(aligned_folder):
         print(f"  Warning: Aligned folder not found: {aligned_folder}")
@@ -321,9 +319,6 @@ def process_split_folder(
     for result in results:
         results_by_filename[result.filename] = result
 
-    # Extract split number from folder name
-    split_match = re.search(r"batch2_split_(\d+)", split_folder, re.IGNORECASE)
-    split_number = split_match.group(1) if split_match else "unknown"
 
     # Categorize episode pairs
     water_episodes: List[EpisodePairResult] = []
@@ -360,7 +355,6 @@ def process_split_folder(
         pair_result = EpisodePairResult(
             episode_id=episode_id,
             instance_id=instance_id,
-            split_number=split_number,
             alpha_filename=alpha_filename,
             bravo_filename=bravo_filename,
             alpha_top_percentile=alpha_top_pct,
@@ -417,7 +411,7 @@ def main():
         "--base-path",
         type=str,
         required=True,
-        help="Base path containing batch_2_split_* folders",
+        help="Base path containing batch folders",
     )
     parser.add_argument(
         "--threshold",
@@ -436,12 +430,6 @@ def main():
         type=int,
         default=None,
         help="Number of worker processes (default: number of CPU cores)",
-    )
-    parser.add_argument(
-        "--split-pattern",
-        type=str,
-        default="batch2_split_*",
-        help="Glob pattern for split folders (default: batch2_split_*)",
     )
     parser.add_argument(
         "--top-percentile",
@@ -465,28 +453,31 @@ def main():
     print(f"  Template shape: {template_rgb.shape}")
     print(f"  Masked pixels: {alpha_mask.sum()}")
 
-    # Find all split folders
-    split_pattern = os.path.join(args.base_path, args.split_pattern)
-    split_folders = sorted(glob(split_pattern))
+    # Find all subfolders in base path
+    batch_folders = sorted(
+        os.path.join(args.base_path, d)
+        for d in os.listdir(args.base_path)
+        if os.path.isdir(os.path.join(args.base_path, d))
+    )
 
-    if not split_folders:
-        print(f"\nNo split folders found matching: {split_pattern}")
+    if not batch_folders:
+        print(f"\nNo subfolders found in: {args.base_path}")
         return
 
-    print(f"\nFound {len(split_folders)} split folders")
+    print(f"\nFound {len(batch_folders)} batch folders")
 
-    # Process each split folder
+    # Process each batch folder
     total_water = 0
     total_non_water = 0
 
-    for split_folder in split_folders:
-        split_name = os.path.basename(split_folder)
+    for batch_folder in batch_folders:
+        batch_name = os.path.basename(batch_folder)
         print(f"\n{'='*60}")
-        print(f"Processing: {split_name}")
+        print(f"Processing: {batch_name}")
         print(f"{'='*60}")
 
-        water_episodes, non_water_episodes = process_split_folder(
-            split_folder=split_folder,
+        water_episodes, non_water_episodes = process_batch_folder(
+            batch_folder=batch_folder,
             template_rgb=template_rgb,
             alpha_mask=alpha_mask,
             threshold=args.threshold,
@@ -496,7 +487,7 @@ def main():
         )
 
         # Save results
-        output_path = os.path.join(split_folder, "water_episodes.json")
+        output_path = os.path.join(batch_folder, "water_episodes.json")
         save_results_json(
             output_path,
             water_episodes,
