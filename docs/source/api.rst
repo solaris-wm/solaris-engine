@@ -3,7 +3,7 @@ API reference
 
 Episodes loop
 ~~~~~~~~~~~~~
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/controller/episodes-loop.js>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episodes-loop.js>`_
 
 .. js:autofunction:: episodes-loop.getOnSpawnFn
 
@@ -39,7 +39,7 @@ Episodes loop
 Episode classes
 ~~~~~~~~~~~~~~~
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/controller/episode-handlers>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episode-handlers>`_
 
 All episode handlers extend :js:class:`episode-handlers/base-episode.BaseEpisode` and implement
 :js:meth:`episode-handlers/base-episode.BaseEpisode.entryPoint` (and optionally
@@ -171,7 +171,7 @@ Eval episodes
 Primitives
 ~~~~~~~~~~
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/controller/primitives>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/primitives>`_
 
 .. _api-building:
 

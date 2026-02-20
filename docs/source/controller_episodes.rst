@@ -248,16 +248,16 @@ Adding a new episode type
 
 To add a new episode type:
 
-1. **Create the handler module** in `controller/episode-handlers/ <https://github.com/georgysavva/mc-multiplayer-data/tree/release/controller/episode-handlers>`_ (or
-   `controller/episode-handlers/eval/ <https://github.com/georgysavva/mc-multiplayer-data/tree/release/controller/episode-handlers/eval>`_ for eval episodes). The module must export a
+1. **Create the handler module** in `controller/episode-handlers/ <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episode-handlers>`_ (or
+   `controller/episode-handlers/eval/ <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episode-handlers/eval>`_ for eval episodes). The module must export a
    class that extends :js:class:`episode-handlers.base-episode.BaseEpisode`.
 
-2. **Register the episode in** `controller/episodes-loop.js <https://github.com/georgysavva/mc-multiplayer-data/tree/release/controller/episodes-loop.js>`_:
+2. **Register the episode in** `controller/episodes-loop.js <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episodes-loop.js>`_:
    - Add an entry to ``episodeClassMap`` mapping the episode type string (e.g. ``myNewEpisode``) to your class.
    - For eval episodes only: add your class to the ``evalEpisodeClasses`` array.
    - To include it in the default set when ``EPISODE_TYPES`` is unset, add the type string to ``defaultEpisodeTypes``.
 
-3. **Add a typical length** in `controller/utils/episode-weights.js <https://github.com/georgysavva/mc-multiplayer-data/tree/release/controller/utils/episode-weights.js>`_: add your
+3. **Add a typical length** in `controller/utils/episode-weights.js <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/utils/episode-weights.js>`_: add your
    episode type key and a typical duration in seconds to ``episodeTypicalLengths``.
    This is used for weighted sampling (shorter episodes are sampled more often). If
    the type is missing, ``selectWeightedEpisodeType()`` will throw.

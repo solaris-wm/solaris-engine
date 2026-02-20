@@ -17,15 +17,17 @@ Controller
 ----------
 
 The Controller Bot is a JavaScript program build on top of Mineflayer. It connects to the Minecraft Server, and drives the behavior of the player. 
-To ensure collaboration, it communicates with the Controller instances of other players connected to the same server. It features a set of high-level, 
+To ensure collaboration, it communicates with the controller instances of other players connected to the same server. It features a set of high-level, 
 reusable game play primitives and a modular system of various episode types focusing on different aspects of the game. See :doc:`controller` for more details.
 
 Camera
 ------
 
 The Camera Bot is the official Minecraft Java Client that runs headless. It connects to the server and pairs up with the corresponding Controller Bot of that player, 
-so that these two processes are logically a single player. Through the server-side plugin, the camera bot, at all times, shares the first person perspective of its controller bot. 
+so that these two processes are logically a single player. Through the :ref:`Minecraft Server Plugin <minecraft-server-plugin>`, the camera bot, at all times, shares the first person perspective of its controller bot. 
 It records the graphics using ``ffmpeg``, which ``SolarisEngine`` aligns with the actions in postprocessing to form a final episode.
+
+.. _minecraft-server-plugin:
 
 Minecraft Server Plugin
 ----------------------
@@ -39,7 +41,7 @@ TODO: @twmeehan elaborate on this part.
 Spectator Bot
 -------------
 
-The spectator bot is another Mineflayer bot (making it a total of 3 bots constituting a single logic player). It always stays in Spectate mode and just follows its controller bot. 
+The spectator bot is another Mineflayer bot (making it a total of 3 bots constituting a single logical player). It always stays in the Spectate mode and just follows its controller bot. 
 It doesn't produce any observations nor actions. 
 It's an auxiliary bot that the Camera bot and the Episode Manger Plugin need for proper game state synchronization between the controller and the camera 
 (specifically block breaking animation).
@@ -59,8 +61,8 @@ making the observation a causal consequence of applying the action.
 The scripts :ref:`prepare_train_dataset.py <prepare-train-dataset-py>`, :ref:`split_train_test.py <split-train-test-py>`, and :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>` validate and transform the output of ``SolarisEngine`` 
 to the final training and evaluation dataset formats `Solaris <https://github.com/solaris-wm/solaris>`_ model code expects.
 
-The optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions.
- It's a helpful debug tool to see how well all bots behave in an episode and that their actions are properly aligned with the observations.
+The optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions. 
+It's a helpful debug tool to see how well all bots behave in an episode and that their actions are properly aligned with the observations.
 
 TODO: Document filter water episodes
 
@@ -69,7 +71,7 @@ Docker
 
 ``SolarisEngine`` uses Docker and Docker Compose to manage its components. The controller bot, camera bot, spectator bot, and Minecraft server are separate Docker containers. 
 The controller bot has the additional ``act_recorder`` Python process for writing actions to disk that runs in a separate Docker container. 
-All in all, for two players, it's ``2 * 4 + 1 = 9`` long running Docker containers total. They are bundled in Docker Compose, forming a instance, which allows them to run in isolation. 
+All in all, for two players, it's ``2 * 4 + 1 = 9`` long running Docker containers total. They are bundled in Docker Compose, forming an instance, which allows them to run in isolation. 
 A Docker Compose instance also has two additional procedural Docker containers, ``plugin_starter`` and ``prep_data``, 
 that run at startup to set up the Minecraft server and the server-side plugin.
 
@@ -81,7 +83,7 @@ It does its rendering on GPU and requires the host machine to have one to ensure
 
 TODO: @daohanlu add more details.
 
-The controller bot, spectator bot, and ``act_recording`` all share the ``solaris-engine-base`` Docker image that has both Node and Python environments set up. 
+The controller bot, spectator bot, and ``act_recording`` Docker containers all share the ``solaris-engine-base`` Docker image that has both Node and Python environments set up. 
 The Minecraft server uses the publicly available ``itzg/minecraft-server`` Docker image.
 
-All postprocessing after all Docker Compose instances finish happens on the host inside the conda environment created by `env.yaml <https://github.com/georgysavva/mc-multiplayer-data/tree/release/env.yaml>`_ file.
+All postprocessing happens on the host inside the conda environment created by `env.yaml <https://github.com/solaris-wm/solaris-engine/blob/dev/env.yaml>`_ file.

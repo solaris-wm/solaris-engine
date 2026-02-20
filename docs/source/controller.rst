@@ -1,20 +1,19 @@
 Controller
 ================
 
-The Controller component of ``SolarisEngine`` is JavaScript program built on top of
+The Controller component of ``SolarisEngine`` is a JavaScript program built on top of
 `Mineflayer <https://github.com/PrismarineJS/mineflayer>`_. It connects via TCP to the
 controller bots of other players and through communication and the high level API of
 Mineflayer makes the bots engage in collaborative gameplay. The controller is built around episode types. 
 An episode type represents a specific multiplayer scenario the bots engage in. To ensure diversity and
 good coverage of various game mechanics, 
 it has a collection of :ref:`14 training episode types <training-episode-types>`. 
-For evaluation it has a collection of separate :ref:`7 eval episode types <eval-episode-types>`,
-featuring core multiplayer mechanics. 
+And to ensure a proper evaluation of the core multiplayer mechanics, it has a collection of separate :ref:`7 eval episode types <eval-episode-types>`.
 All episodes types currently support only two players.
 
 
-Design
-------
+Program Lifecycle
+------------------
 
 Through out the life of the controller program, it establishes a connection with the
 server and creates a ``mineflayer.Bot()`` instance just once at startup. After that,
@@ -25,6 +24,12 @@ connected to the server. The function runs in a loop sampling random episodes,
 executing them, and sending actions to the separate ``action_recorder`` process to be
 saved as json files on disk.
 
+To ensure the data collection doesn't get interrupted with the player dying, the
+controller gives the players infinite resistance, water breathing, and no fall damage
+via RCON at the program startup.
+
+Episodes Loop
+-------------
 
 Controllers of player share the same random generator, ``sharedBotRng`` that they use
 to sample the same episode type randomly on every loop iteration. To ensure that the
@@ -36,9 +41,9 @@ The episode loop has a error handling mechanism where it catches any error the m
 occur during the episode execution and notifies other players about it. They
 collectively abort the current episode and progress to the next one.
 
-To ensure the data collection doesn't get interrupted with the player dying, the
-controller gives the players infinite resistance, water breathing, and no fall damage
-via RCON at the program startup.
+
+Episode Progression
+--------------------
 
 All episode types inherit :js:class:`episode-handlers.base-episode.BaseEpisode` that provides them with the basic episode lifecycle: setupEpisode, entryPoint, tearDownEpisode, and stop-phase coordination.
 An episode consists of multiple phases. At the beginning and end of a phase all players

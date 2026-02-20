@@ -11,7 +11,7 @@ This page describes the main command-line entry points for data collection: ``ru
 ``run.sh``
 ----------------------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/run.sh>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/run.sh>`_
 
 runs the full training data collection pipeline: it generates compose configs, starts Minecraft instances per batch, collects episodes, stops them, postprocesses, then prepares and splits the train dataset and annotates some test videos.
 
@@ -60,14 +60,14 @@ Output layout
 Data is written under ``<output-dir>/``:
 
 - ``data_collection/train/batch_<i>/`` — per-batch compose configs, logs, and aligned outputs
-- ``datasets/<dataset-name>/`` — prepared train dataset (after postprocess and split); some test split videos are annotated by `postprocess/annotate_video_batch.py <https://github.com/georgysavva/mc-multiplayer-data/tree/release/postprocess/annotate_video_batch.py>`_
+- ``datasets/<dataset-name>/`` — prepared train dataset (after postprocess and split); some test split videos are annotated by `postprocess/annotate_video_batch.py <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/annotate_video_batch.py>`_
 
 .. _run-evals-sh:
 
 ``run_evals.sh``
 -----------------------------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/run_evals.sh>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/run_evals.sh>`_
 
 Runs evaluation data collection for several episode types, then prepares the eval datasets and annotates some of the videos for debugging.
 
@@ -119,7 +119,7 @@ Output layout
 ~~~~~~~~~~~~~
 
 - ``<output-dir>/data_collection/eval/<eval_type>/`` — per-type compose configs, logs, and aligned outputs
-- ``<output-dir>/datasets/eval/`` — prepared eval datasets (from `postprocess/prepare_eval_datasets.py <https://github.com/georgysavva/mc-multiplayer-data/tree/release/postprocess/prepare_eval_datasets.py>`_); some videos are annotated by `postprocess/annotate_video_batch.py <https://github.com/georgysavva/mc-multiplayer-data/tree/release/postprocess/annotate_video_batch.py>`_
+- ``<output-dir>/datasets/eval/`` — prepared eval datasets (from `postprocess/prepare_eval_datasets.py <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/prepare_eval_datasets.py>`_); some videos are annotated by `postprocess/annotate_video_batch.py <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/annotate_video_batch.py>`_
 
 Postprocessing
 --------------
@@ -131,7 +131,7 @@ This section covers the postprocessing utilities that run as part of :ref:`run.s
 ``process_recordings.py``
 -------------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/postprocess/process_recordings.py>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/process_recordings.py>`_
 
 Aligns raw Minecraft camera recordings with Mineflayer action episode files for a single bot, producing per-episode aligned camera videos. It can operate on a full directory of episodes or a single episode file.
 
@@ -179,7 +179,7 @@ Output layout
 ``prepare_train_dataset.py``
 -----------------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/postprocess/prepare_train_dataset.py>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/prepare_train_dataset.py>`_
 
 Validates and consolidates aligned camera videos and action JSONs into a single final dataset directory for training. It filters for episodes where both Alpha and Bravo have consistent video/action pairs and enforces one‑to‑one alignment between frames and actions.
 
@@ -229,7 +229,7 @@ All validated per‑episode files (videos and JSONs for both players) are copied
 ``split_train_test.py``
 -----------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/postprocess/split_train_test.py>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/split_train_test.py>`_
 
 Splits a consolidated final dataset directory into train/test splits.
 
@@ -273,7 +273,7 @@ Creates ``<final_dir>/train/`` and ``<final_dir>/test/`` and moves entire episod
 ``prepare_eval_datasets.py``
 -----------------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/postprocess/prepare_eval_datasets.py>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/prepare_eval_datasets.py>`_
 
 Prepares evaluation datasets from aligned eval episodes, mirroring the structure expected by Solaris model code. It filters, validates, and reshapes eval episodes into a unified directory layout.
 
@@ -306,7 +306,7 @@ Options
 ``annotate_video_batch.py``
 ---------------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/postprocess/annotate_video_batch.py>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/annotate_video_batch.py>`_
 
 Batch annotates aligned camera videos with overlaid action information and vertically concatenates Alpha/Bravo views into a single debug video per episode. It can run on a single videos directory or over multiple subdirectories and supports parallel processing.
 
@@ -355,7 +355,7 @@ This section documents the Python tools that generate and orchestrate the Docker
 ``generate_compose.py``
 -----------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/generate_compose.py>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/generate_compose.py>`_
 
 Generates multiple Docker Compose files, each describing a full ``SolarisEngine``(Minecraft server, controller bots, camera bots, spectators, and helper containers) for a single instance. It supports mixed flat/normal worlds, GPU‑backed camera rendering, and a wide range of episode customization options.
 
@@ -470,7 +470,7 @@ Output layout
 ``orchestrate.py``
 ------------------
 
-`[Source] <https://github.com/georgysavva/mc-multiplayer-data/tree/release/orchestrate.py>`_
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/orchestrate.py>`_
 
 Orchestrates one or more generated Docker Compose instances produced by :ref:`generate_compose.py <generate-compose-py>`. The script starts/stops them, captures logs, inspects status, and optionally runs postprocessing over their outputs.
 

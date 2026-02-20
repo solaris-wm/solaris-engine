@@ -1,7 +1,9 @@
 SolarisEngine
 =============
 
-This repository contains a multiplayer data collection framework for Minecraft. It uses Mineflayer bots to collect collaborative gameplay. The framework records the official Minecraft graphics annotated with ground truth action for every player.
+This repository contains a multiplayer data collection framework for Minecraft. It uses `Mineflayer <https://github.com/PrismarineJS/mineflayer>`_ bots to collect collaborative gameplay. The framework records the official Minecraft graphics annotated with ground truth action for every player.
+
+The code is available on `GitHub <https://github.com/solaris-wm/solaris-engine>`_.
 
 .. toctree::
    :maxdepth: 2
