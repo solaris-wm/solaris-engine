@@ -113,7 +113,7 @@ The script runs one batch per eval type:
 - ``bothLookAwayEval``
 - ``oneLooksAwayEval``
 
-For ``turnToLookEval`` and ``turnToLookOppositeEval`` the script uses 1 normal world and 32 episodes; for the rest it uses 2 flatland worlds and 16 episodes per type.
+For ``turnToLookEval`` and ``turnToLookOppositeEval`` the script uses 1 normal world and 32 episodes; for the rest, it uses 2 flatland worlds and 16 episodes per type.
 
 Output layout
 ~~~~~~~~~~~~~
