@@ -5,6 +5,7 @@ NUM_FLAT_WORLD=1
 NUM_NORMAL_WORLD=1
 NUM_EPISODES=2
 DATASET_NAME="duet"
+FILTER_WATER_EPISODES=true
 
 # Parse CLI args
 while [[ $# -gt 0 ]]; do
@@ -33,6 +34,10 @@ while [[ $# -gt 0 ]]; do
       DATASET_NAME="$2"
       shift 2
       ;;
+    --filter-water-episodes)
+      FILTER_WATER_EPISODES="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
       echo "  --output-dir DIR       Base data directory (default: output2)"
@@ -41,6 +46,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --num-normal-world N   Number of normal worlds per batch (default: 1)"
       echo "  --num-episodes N       Number of episodes (default: 2)"
       echo "  --dataset-name NAME    Dataset name (default: duet)"
+      echo "  --filter-water-episodes true|false  Filter water episodes (default: true)"
       echo "  -h, --help             Show this help"
       exit 0
       ;;
@@ -85,8 +91,18 @@ for ((i=0; i<NUM_BATCHES; i++)); do
     python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers 32 --comparison-video --output-dir "$BATCH_DIR/aligned"
 done
 
+if [[ "$FILTER_WATER_EPISODES" == "true" ]]; then
+  echo "Detecting water episodes"
+  python3 postprocess/detect_water_episodes_batch.py $BASE_DATA_COLLECTION_DIR --out-path $BASE_DATA_COLLECTION_DIR/water_episodes.json
+fi
+
 echo "Preparing train dataset"
 python3 postprocess/prepare_train_dataset.py --source-dir $BASE_DATA_COLLECTION_DIR --destination-dir $BASE_DATA_DIR/datasets/$DATASET_NAME
+
+if [[ "$FILTER_WATER_EPISODES" == "true" ]]; then
+  echo "Filtering train dataset"
+  python3 postprocess/filter_dataset.py --episodes-json $BASE_DATA_COLLECTION_DIR/water_episodes.json --dataset-dir $BASE_DATA_COLLECTION_DIR/datasets/$DATASET_NAME
+fi
 
 echo "Splitting train dataset"
 python3 postprocess/split_train_test.py $BASE_DATA_DIR/datasets/$DATASET_NAME 

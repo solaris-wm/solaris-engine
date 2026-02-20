@@ -2,11 +2,11 @@
 """Filter a multiplayer dataset by moving selected episodes to a discarded/ dir.
 
 This script is intended to work with episode lists of the form produced by
-`multiplayer_v2_water_episodes.json`, i.e. a JSON array where each element is
+`postprocess/detect_water_episodes_batch.py`, i.e. a JSON array where each element is
 an object containing:
 
     {
-        "split_id": "75_batch2_split_0",
+        "batch_id": "batch_0",
         "episode_id": "000011",
         "instance_id": "002"
     }
@@ -14,15 +14,15 @@ an object containing:
 The dataset directory is expected to contain files whose *base names* encode
 these three fields, e.g.::
 
-    75_batch2_split_0_000000_Alpha_instance_000.mp4
-    batch2_split_4_000058_Bravo_instance_001_episode_info.json
+    batch_0_000000_Alpha_instance_000.mp4
+    batch_0_000058_Bravo_instance_001_episode_info.json
 
 Here,
-- split id  -> prefix before the 6‑digit episode id (e.g. "75_batch2_split_0")
+- batch id  -> prefix before the 6‑digit episode id (e.g. "batch_0")
 - episode id -> 6 zero‑padded digits (e.g. "000000")
 - instance id -> 3 zero‑padded digits after "instance_" (e.g. "000")
 
-All files in the dataset directory whose parsed (split_id, episode_id,
+All files in the dataset directory whose parsed (batch_id, episode_id,
 instance_id) triple appears in the JSON list will be moved into a sibling
 subdirectory called "discarded".
 """
@@ -36,13 +36,13 @@ from pathlib import Path
 from typing import Optional, Set
 
 
-# Match a 6-digit episode id that is preceded by some split id prefix.
-# Example: "75_batch2_split_0_000000_Alpha_instance_000.mp4"
-#          ^--------------split_id-------------^ ^episode^
+# Match a 6-digit episode id that is preceded by some batch id prefix.
+# Example: "batch_0_000000_Alpha_instance_000.mp4"
+#          ^--------------batch_id-------------^ ^episode^
 # After the 6 digits we allow either an underscore, a dot (file extension),
 # or end-of-string.
 EPISODE_WITH_PREFIX_RE = re.compile(
-    r"^(?P<split_id>.+?)_(?P<episode>\d{6})(?:_|\.|$)"
+    r"^(?P<batch_id>.+?)_(?P<episode>\d{6})(?:_|\.|$)"
 )
 
 # Match the 3-digit instance id near the end of the filename.
@@ -52,13 +52,13 @@ INSTANCE_RE = re.compile(r"instance_(?P<instance>\d{3})(?:_|\.|$)")
 
 @dataclass(frozen=True)
 class EpisodeKey:
-    split_id: str
+    batch_id: str
     episode_id: str  # zero-padded 6-digit
     instance_id: str  # zero-padded 3-digit
 
 
 def parse_episode_key_from_name(name: str) -> Optional[EpisodeKey]:
-    """Parse (split_id, episode_id, instance_id) from a filename.
+    """Parse (batch_id, episode_id, instance_id) from a filename.
 
     Returns None if the name does not contain the expected patterns.
     """
@@ -69,16 +69,16 @@ def parse_episode_key_from_name(name: str) -> Optional[EpisodeKey]:
         print(f"Could not parse episode key from name: {name}. {ep_match} {inst_match}")
         return None
 
-    split_id = ep_match.group("split_id")
+    batch_id = ep_match.group("batch_id")
     episode_id = ep_match.group("episode")
     instance_id = inst_match.group("instance")
-    return EpisodeKey(split_id=split_id, episode_id=episode_id, instance_id=instance_id)
+    return EpisodeKey(batch_id=batch_id, episode_id=episode_id, instance_id=instance_id)
 
 
 def load_excluded_keys(json_path: Path) -> Set[EpisodeKey]:
     """Load the JSON list of episodes to exclude and return a set of EpisodeKey.
 
-    The JSON must be a list of objects each containing "split_id",
+    The JSON must be a list of objects each containing "batch_id",
     "episode_id", and "instance_id" as strings.
     """
 
@@ -95,7 +95,7 @@ def load_excluded_keys(json_path: Path) -> Set[EpisodeKey]:
                 f"Entry #{idx} in {json_path} is not an object: {item!r}"
             )
         try:
-            split_id = str(item["split_id"])
+            batch_id = str(item["batch_id"])
             episode_id = str(item["episode_id"])
             instance_id = str(item["instance_id"])
         except KeyError as e:
@@ -103,7 +103,7 @@ def load_excluded_keys(json_path: Path) -> Set[EpisodeKey]:
                 f"Entry #{idx} in {json_path} is missing key {e!s}: {item!r}"
             ) from e
 
-        excluded.add(EpisodeKey(split_id=split_id, episode_id=episode_id, instance_id=instance_id))
+        excluded.add(EpisodeKey(batch_id=batch_id, episode_id=episode_id, instance_id=instance_id))
 
     return excluded
 
@@ -166,7 +166,7 @@ def main() -> None:
         description=(
             "Filter a multiplayer dataset by moving selected episodes into a "
             "'discarded' subdirectory based on a JSON list of "
-            "(split_id, episode_id, instance_id) triples."
+            "(batch_id, episode_id, instance_id) triples."
         )
     )
     parser.add_argument(
@@ -175,7 +175,7 @@ def main() -> None:
         required=True,
         help=(
             "Path to JSON file containing a list of objects with "
-            "'split_id', 'episode_id', and 'instance_id' keys. "
+            "'batch_id', 'episode_id', and 'instance_id' keys. "
             "All matching episodes will be discarded."
         ),
     )
@@ -184,7 +184,7 @@ def main() -> None:
         type=str,
         help=(
             "Path to dataset directory containing files such as "
-            "'75_batch2_split_0_000000_Alpha_instance_000.*'. "
+            "'batch_0_000000_Alpha_instance_000.*'. "
             "Matching files will be moved into a 'discarded' subdirectory."
         ),
     )
