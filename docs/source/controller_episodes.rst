@@ -15,13 +15,13 @@ Below are the 14 training episode types and what they do.
 - **What**: One bot runs towards and past the other bot, then spins to look at it.
 - **Notable parameters**:
 
-  - Walk past target by 4–8 blocks.
+  - Walk past the target by 4–8 blocks.
   - Pathfinding timeout: 20s.
 
 :js:class:`chase <episode-handlers.chase-episode.ChaseEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **What**: One bot runs away in a zig-zag pattern and the other bot pursues it.
+- **What**: One bot runs away in a zig-zag pattern, and the other bot pursues it.
 - **Notable parameters**:
 
   - Chase duration: 5–15s.
@@ -52,7 +52,7 @@ Below are the 14 training episode types and what they do.
 :js:class:`walkLookAway <episode-handlers.walk-look-away-episode.WalkLookAwayEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **What**: The episode consists of iterations where one bot moves in a random direction, looks away, looks back at the other bot. The other observes.
+- **What**: The episode consists of iterations where one bot moves in a random direction, looks away, and looks back at the other bot. The other observes.
 - **Notable parameters**:
 
   - Iterations per episode: 3.
@@ -75,7 +75,7 @@ Below are the 14 training episode types and what they do.
 - **Setup**:
 
   - Temporarily sets server difficulty to ``easy`` during setup to make mobs attack players; resets back to ``peaceful`` in teardown.
-  - Provisions a random sword.
+  - Provides a random sword.
 
 - **Notable parameters**:
 
@@ -85,7 +85,7 @@ Below are the 14 training episode types and what they do.
 :js:class:`buildStructure <episode-handlers.build-structure-episode.BuildStructureEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **What**: Each bot builds a wall or in front of each other, or build a platform together at midpoint. 
+- **What**: Each bot builds a wall in front of each other, or builds a platform together at the midpoint. 
 - **Setup**: Gives blocks for building.
 - **Notable parameters**:
 
