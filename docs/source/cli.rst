@@ -13,7 +13,7 @@ This page describes the main command-line entry points for data collection: ``ru
 
 `[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/run.sh>`_
 
-runs the full training data collection pipeline: it generates compose configs, starts Minecraft instances per batch, collects episodes, stops them, postprocesses, then prepares and splits the train dataset and annotates some test videos.
+runs the full training data collection pipeline: it generates compose configs, starts Minecraft instances per batch, collects episodes, stops them, postprocesses, then optionally filters water episodes, prepares and splits the train dataset, and annotates some test videos.
 
 Usage
 ~~~~~
@@ -50,9 +50,25 @@ Options
    * - ``--dataset-name NAME``
      - ``duet``
      - Name of the output dataset under ``<output-dir>/datasets/``
+   * - ``--filter-water-episodes true|false``
+     - ``true``
+     - Whether to detect and exclude water episodes from the train dataset (see :ref:`Water filtering <run-sh-water-filtering>`)
    * - ``-h``, ``--help``
      -
      - Show usage and exit
+
+.. _run-sh-water-filtering:
+
+Water filtering
+~~~~~~~~~~~~~~~
+
+When ``--filter-water-episodes true`` (the default), the script:
+
+1. After all batches complete, runs :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` to detect episodes where either Alpha or Bravo shows underwater indicators (oxygen bar HUD). Results are written to ``<output-dir>/data_collection/train/water_episodes.json``.
+
+2. After ``prepare_train_dataset.py`` runs, runs :ref:`filter_dataset.py <filter-dataset-py>` to move detected water episodes into a ``discarded/`` subdirectory, excluding them from the train dataset.
+
+Use ``--filter-water-episodes false`` to skip detection and filtering and keep all episodes.
 
 Output layout
 ~~~~~~~~~~~~~
@@ -60,7 +76,8 @@ Output layout
 Data is written under ``<output-dir>/``:
 
 - ``data_collection/train/batch_<i>/`` — per-batch compose configs, logs, and aligned outputs
-- ``datasets/<dataset-name>/`` — prepared train dataset (after postprocess and split); some test split videos are annotated by `postprocess/annotate_video_batch.py <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/annotate_video_batch.py>`_
+- ``data_collection/train/water_episodes.json`` — (when water filtering is enabled) list of detected water episodes
+- ``datasets/<dataset-name>/`` — prepared train dataset (after postprocess and split); some test split videos are annotated by `postprocess/annotate_video_batch.py <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/annotate_video_batch.py>`_. When water filtering is enabled, excluded episodes are moved to ``datasets/<dataset-name>/discarded/``
 
 .. _run-evals-sh:
 
@@ -119,7 +136,7 @@ Output layout
 ~~~~~~~~~~~~~
 
 - ``<output-dir>/data_collection/eval/<eval_type>/`` — per-type compose configs, logs, and aligned outputs
-- ``<output-dir>/datasets/eval/`` — prepared eval datasets (from `postprocess/prepare_eval_datasets.py <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/prepare_eval_datasets.py>`_); some videos are annotated by `postprocess/annotate_video_batch.py <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/annotate_video_batch.py>`_
+- ``<output-dir>/datasets/eval/`` — prepared eval datasets (from :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>`); some videos are annotated by :ref:`annotate_video_batch.py <annotate-video-batch-py>`
 
 Postprocessing
 --------------
@@ -173,6 +190,95 @@ Output layout
 
 - ``<output-dir>/<episode>_camera.mp4`` — aligned camera video per episode.
 - ``<output-dir>/<episode>_camera_meta.json`` — alignment metadata and diagnostics (including per‑frame mappings and quality stats).
+
+.. _detect-water-episodes-batch-py:
+
+``detect_water_episodes_batch.py``
+-----------------------------------
+
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/detect_water_episodes_batch.py>`_
+
+Batch detects water episodes by detecting the oxygen bar HUD element in video frames. Uses multiprocessing to process all video files in all batch directories under a base path. Episodes are processed as Alpha‑Bravo pairs: if either video shows underwater indicators (oxygen bar), the entire pair is classified as a water episode. Outputs per‑batch JSON files and an aggregated water episodes list suitable for :ref:`filter_dataset.py <filter-dataset-py>`.
+
+Usage
+~~~~~
+
+.. code-block:: bash
+
+   python postprocess/detect_water_episodes_batch.py --base-path BASE_PATH [OPTIONS]
+
+Options
+~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Option
+     - Default
+     - Description
+   * - ``--base-path PATH``
+     - (required)
+     - Base path containing batch folders (each with an ``aligned/`` subdirectory).
+   * - ``--threshold FLOAT``
+     - ``0.8``
+     - Cosine similarity threshold for water detection (oxygen bar match).
+   * - ``--max-frames N``
+     - ``1000``
+     - Maximum number of frames to sample per video.
+   * - ``--num-workers N``
+     - CPU count
+     - Number of worker processes.
+   * - ``--top-percentile N``
+     - ``10``
+     - Top N percentile for similarity thresholding (e.g. 10 = top 10%).
+   * - ``--out-path PATH``
+     - ``<base-path>/all_water_episodes.json``
+     - Output path for aggregated water episodes JSON (list of ``batch_id``, ``episode_id``, ``instance_id``).
+
+Output layout
+~~~~~~~~~~~~~
+
+- Per batch: ``<batch_folder>/water_episodes.json`` — categorized water/non‑water episodes and metadata.
+- Aggregated: ``<out-path>`` — flat list of water episode keys for use by :ref:`filter_dataset.py <filter-dataset-py>`.
+
+.. _filter-dataset-py:
+
+``filter_dataset.py``
+---------------------
+
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/filter_dataset.py>`_
+
+Filters a multiplayer dataset by moving selected episodes into a ``discarded/`` subdirectory. Expects a JSON list of episode keys (typically from :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>`) with ``batch_id``, ``episode_id``, and ``instance_id``. File names in the dataset directory must encode these fields, e.g. ``batch_0_000058_Bravo_instance_001_episode_info.json``.
+
+Usage
+~~~~~
+
+.. code-block:: bash
+
+   python postprocess/filter_dataset.py --episodes-json PATH dataset_dir
+
+Options
+~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Option
+     - Default
+     - Description
+   * - ``--episodes-json PATH``
+     - (required)
+     - Path to JSON file with list of objects containing ``batch_id``, ``episode_id``, and ``instance_id``. Matching episodes are moved to ``discarded/``.
+   * - ``dataset_dir``
+     - (required)
+     - Dataset directory containing files such as ``batch_0_000000_Alpha_instance_000.*``. Matching files are moved into a ``discarded/`` subdirectory.
+
+Output layout
+~~~~~~~~~~~~~
+
+Matching files are moved from ``<dataset_dir>/`` into ``<dataset_dir>/discarded/``. Only top‑level files are considered; subdirectories are ignored.
 
 .. _prepare-train-dataset-py:
 

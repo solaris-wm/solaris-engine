@@ -36,8 +36,6 @@ Minecraft Server Plugin
 It loads on server start and, after the bots of all players have been connected, it continuously synchronizes the character states of the controller bots to their corresponding camera bots. 
 It replays all actions, positions, camera movements, and GUI elements. It keeps the camera bot invisible to all players.
 
-TODO: @twmeehan elaborate on this part.
-
 Spectator Bot
 -------------
 
@@ -61,10 +59,12 @@ making the observation a causal consequence of applying the action.
 The scripts :ref:`prepare_train_dataset.py <prepare-train-dataset-py>`, :ref:`split_train_test.py <split-train-test-py>`, and :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>` validate and transform the output of ``SolarisEngine`` 
 to the final training and evaluation dataset formats `Solaris <https://github.com/solaris-wm/solaris>`_ model code expects.
 
+The two optional scripts :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` and :ref:`filter_dataset.py <filter-dataset-py>` detect episodes 
+where either Alpha or Bravo are under water by analyzing the oxygen bar HUD and exclude them from the train dataset.
+
 The optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions. 
 It's a helpful debug tool to see how well all bots behave in an episode and that their actions are properly aligned with the observations.
 
-TODO: Document filter water episodes
 
 Docker
 ------
