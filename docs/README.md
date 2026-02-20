@@ -4,7 +4,7 @@ This folder builds a static documentation website.
 
 The pages in `docs/source/` were initialized from the former repository README files, but are now maintained independently inside `docs/`.
 
-## Setup (in your `SolarisEngine` conda env)
+## Setup
 
 From the repo root:
 
@@ -12,6 +12,7 @@ From the repo root:
 conda env create -f docs/env.yaml
 conda activate solaris-docs
 python -m pip install -r docs/requirements.txt
+npm install
 ```
 
 ## Build the website

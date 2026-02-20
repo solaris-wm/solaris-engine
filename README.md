@@ -1,6 +1,6 @@
 # SolarisEngine
 
-This repository contains a multiplayer data collection framework for Minecraft. The players engage in a collaborative gameplay, and the framework collects the official Minecraft graphics annotated with ground truth action for every player.
+This repository contains a multiplayer data collection framework for Minecraft. It uses Mineflayer bots to collect collaborative gameplay. The framework records the official Minecraft graphics annotated with ground truth action for every player.
 
 ## Documentation
 
