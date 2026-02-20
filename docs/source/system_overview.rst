@@ -60,7 +60,7 @@ The scripts :ref:`prepare_train_dataset.py <prepare-train-dataset-py>`, :ref:`sp
 to the final training and evaluation dataset formats `Solaris <https://github.com/solaris-wm/solaris>`_ model code expects.
 
 The two optional scripts :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` and :ref:`filter_dataset.py <filter-dataset-py>` detect episodes 
-where either Alpha or Bravo are under water by analyzing the oxygen bar HUD and exclude them from the train dataset.
+where either Alpha or Bravo is underwater by analyzing the oxygen bar HUD and excluding them from the train dataset.
 
 The optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions. 
 It's a helpful debug tool to see how well all bots behave in an episode and that their actions are properly aligned with the observations.
