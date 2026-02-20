@@ -16,7 +16,7 @@ and run the postprocessing scripts on the host to produce the final datasets.
 Controller
 ----------
 
-The Controller Bot is a JavaScript program build on top of Mineflayer. It connects to the Minecraft Server, and drives the behavior of the player. 
+The Controller Bot is a JavaScript program built on top of Mineflayer. It connects to the Minecraft Server and drives the behavior of the player. 
 To ensure collaboration, it communicates with the controller instances of other players connected to the same server. It features a set of high-level, 
 reusable game play primitives and a modular system of various episode types focusing on different aspects of the game. See :doc:`controller` for more details.
 
@@ -42,8 +42,8 @@ Spectator Bot
 -------------
 
 The spectator bot is another Mineflayer bot (making it a total of 3 bots constituting a single logical player). It always stays in the Spectate mode and just follows its controller bot. 
-It doesn't produce any observations nor actions. 
-It's an auxiliary bot that the Camera bot and the Episode Manger Plugin need for proper game state synchronization between the controller and the camera 
+It doesn't produce any observations or actions. 
+It's an auxiliary bot that the Camera bot and the Episode Manager Plugin need for proper game state synchronization between the controller and the camera 
 (specifically block breaking animation).
 
 Postprocessing
@@ -79,7 +79,7 @@ The outer layer of Python scripts, :ref:`generate_compose.py <generate-compose-p
 enabling data collection at scale.
 
 The camera bot has a dedicated Docker image, ``solaris-engine-camera``, configured with a Java runtime and the official Minecraft Java client running headless. 
-It does its rendering on GPU and requires the host machine to have one to ensure proper Minecraft graphic rendering FPS.
+It does its rendering on the GPU and requires the host machine to have one to ensure proper Minecraft graphic rendering FPS.
 
 TODO: @daohanlu add more details.
 
