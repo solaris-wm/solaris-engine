@@ -24,83 +24,72 @@ The controller is responsible for action recording of the playing bot. It saves 
 
 .. list-table::
    :header-rows: 1
-   :widths: 18 10 72
+   :widths: 18 16 66
 
    * - Action key
      - Type
      - Description
    * - forward
-     - bool
-     - Player moved forward (W).
+     - bool/continuous
+     - Player moving forward (W).
    * - back
-     - bool
-     - Player moved backward (S).
+     - bool/continuous
+     - Player moving backward (S).
    * - left
-     - bool
-     - Player strafed left (A).
+     - bool/continuous
+     - Player strafing left (A).
    * - right
-     - bool
-     - Player strafed right (D).
+     - bool/continuous
+     - Player strafing right (D).
    * - jump
-     - bool
-     - Player jumped.
+     - bool/continuous
+     - Player jumping.
    * - sprint
-     - bool
-     - Player sprinted.
+     - bool/continuous
+     - Player sprinting.
    * - sneak
-     - bool
-     - Player sneaked.
+     - bool/continuous
+     - Player sneaking.
    * - camera
-     - vec2
-     - Player changed the camera orientation by a look delta (yaw, pitch).
+     - vec2/continuous
+     - Change in player camera orientation (yaw, pitch).
    * - attack
-     - bool
-     - Player attacked.
+     - bool/discrete
+     - Player attacks.
    * - use
-     - bool
-     - Player used / interacted with the environment.
+     - bool/discrete
+     - Player uses / interacts with the environment.
    * - mount
-     - bool
-     - Player mounted an entity/vehicle.
+     - bool/discrete
+     - Player mounts an entity/vehicle.
    * - dismount
-     - bool
-     - Player dismounted.
+     - bool/discrete
+     - Player dismounts.
    * - place_block
-     - bool
-     - Player placed a block using the currently selected item.
+     - bool/discrete
+     - Player places a block using the currently selected item.
    * - place_entity
-     - bool
-     - Player placed an entity item.
+     - bool/discrete
+     - Player places an entity item.
    * - mine
-     - bool
-     - Player mined / broke the targeted block.
+     - bool/continuous
+     - Player mining a block.
    * - hotbar.1
-     - bool
-     - Player selected hotbar slot 1.
+     - bool/discrete
+     - Player selects hotbar slot 1.
    * - hotbar.2
-     - bool
-     - Player selected hotbar slot 2.
+     - bool/discrete
+     - Player selects hotbar slot 2.
    * - hotbar.3
-     - bool
-     - Player selected hotbar slot 3.
+     - bool/discrete
+     - Player selects hotbar slot 3.
    * - hotbar.4
-     - bool
-     - Player selected hotbar slot 4.
+     - bool/discrete
+     - Player selects hotbar slot 4.
    * - hotbar.5
-     - bool
-     - Player selected hotbar slot 5.
-   * - hotbar.6
-     - bool
-     - Player selected hotbar slot 6.
-   * - hotbar.7
-     - bool
-     - Player selected hotbar slot 7.
-   * - hotbar.8
-     - bool
-     - Player selected hotbar slot 8.
-   * - hotbar.9
-     - bool
-     - Player selected hotbar slot 9.
+     - bool/discrete
+     - Player selects hotbar slot 5.
+
 
 
 Camera
