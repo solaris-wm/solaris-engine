@@ -1,3 +1,5 @@
+set -e
+
 # Defaults
 BASE_DATA_DIR="output2"
 NUM_BATCHES=2
