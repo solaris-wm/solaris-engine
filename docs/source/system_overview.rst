@@ -25,7 +25,7 @@ Camera
 
 The Camera Bot is the official Minecraft Java Client that runs headless. It connects to the server and pairs up with the corresponding Controller Bot of that player, 
 so that these two processes are logically a single player. Through the :ref:`Minecraft Server Plugin <minecraft-server-plugin>`, the camera bot, at all times, shares the first person perspective of its controller bot. 
-It records the graphics using ``ffmpeg``, which ``SolarisEngine`` aligns with the actions in postprocessing to form a final episode.
+It records the graphics using ``ffmpeg``, which ``SolarisEngine`` aligns with the actions in postprocessing to form a final episode. Both the controller and camera record at ``20`` FPS. The observations (video) produced by the camera have the dimensions of ``1280×720``.
 
 .. _minecraft-server-plugin:
 
@@ -87,3 +87,8 @@ The controller bot, spectator bot, and ``act_recording`` Docker containers all s
 The Minecraft server uses the publicly available ``itzg/minecraft-server`` Docker image.
 
 All postprocessing happens on the host inside the conda environment created by `env.yaml <https://github.com/solaris-wm/solaris-engine/blob/dev/env.yaml>`_ file.
+
+Third-party Dependencies
+------------------------
+
+The engine uses a forked version of Mineflayer with the following modifications
