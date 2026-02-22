@@ -20,6 +20,89 @@ The Controller Bot is a JavaScript program built on top of Mineflayer. It connec
 To ensure collaboration, it communicates with the controller instances of other players connected to the same server. It features a set of high-level, 
 reusable game play primitives and a modular system of various episode types focusing on different aspects of the game. See :doc:`controller` for more details.
 
+The controller is responsible for action recording of the playing bot. It saves them to disk as json files. Below is the list of all actions it records:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 18 10 72
+
+   * - Action key
+     - Type
+     - Description
+   * - forward
+     - bool
+     - Player moved forward (W).
+   * - back
+     - bool
+     - Player moved backward (S).
+   * - left
+     - bool
+     - Player strafed left (A).
+   * - right
+     - bool
+     - Player strafed right (D).
+   * - jump
+     - bool
+     - Player jumped.
+   * - sprint
+     - bool
+     - Player sprinted.
+   * - sneak
+     - bool
+     - Player sneaked.
+   * - camera
+     - vec2
+     - Player changed the camera orientation by a look delta (yaw, pitch).
+   * - attack
+     - bool
+     - Player attacked.
+   * - use
+     - bool
+     - Player used / interacted with the environment.
+   * - mount
+     - bool
+     - Player mounted an entity/vehicle.
+   * - dismount
+     - bool
+     - Player dismounted.
+   * - place_block
+     - bool
+     - Player placed a block using the currently selected item.
+   * - place_entity
+     - bool
+     - Player placed an entity item.
+   * - mine
+     - bool
+     - Player mined / broke the targeted block.
+   * - hotbar.1
+     - bool
+     - Player selected hotbar slot 1.
+   * - hotbar.2
+     - bool
+     - Player selected hotbar slot 2.
+   * - hotbar.3
+     - bool
+     - Player selected hotbar slot 3.
+   * - hotbar.4
+     - bool
+     - Player selected hotbar slot 4.
+   * - hotbar.5
+     - bool
+     - Player selected hotbar slot 5.
+   * - hotbar.6
+     - bool
+     - Player selected hotbar slot 6.
+   * - hotbar.7
+     - bool
+     - Player selected hotbar slot 7.
+   * - hotbar.8
+     - bool
+     - Player selected hotbar slot 8.
+   * - hotbar.9
+     - bool
+     - Player selected hotbar slot 9.
+
+
 Camera
 ------
 
@@ -91,4 +174,34 @@ All postprocessing happens on the host inside the conda environment created by `
 Third-party Dependencies
 ------------------------
 
-The engine uses a forked version of Mineflayer with the following modifications
+Mineflayer
+~~~~~~~~~~
+
+The Controller uses a `forked version <https://github.com/georgysavva/mineflayer>`_ of Mineflayer with the following modifications:
+
+- Mineflayer API exposes access to the most recently applied camera action in its physics module and its event system is extended to send events on one-off semantic actions such as attacking, using, placing, and hotbar changes.
+- The bot correctly looks at the face of the block when placing a new block.
+- Camera smoothing is added to all non-Pathfinder look commands.
+
+See the full list of changes `here <https://github.com/PrismarineJS/mineflayer/compare/master...georgysavva:mineflayer:master>`_.
+
+Mineflayer-Pathfinder
+~~~~~~~~~~~~~~~~~~~~~
+
+The Controller uses a `forked version <https://github.com/daohanlu/mineflayer-pathfinder>`_ of Mineflayer-Pathfinder plugin with the following modifications:
+
+- Improved looking when digging.
+- Extended scaffolding items.
+
+See the full list of changes `here <https://github.com/PrismarineJS/mineflayer-pathfinder/compare/master...daohanlu:mineflayer-pathfinder:master>`_.
+
+Mineflayer-Prismarine-Viewer
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The Controller implements its action recording based on a `forked version <https://github.com/georgysavva/prismarine-viewer-colalab>`_ of Prismarine-Viewer. It modifies it in the following way:
+
+- It disables any graphic recordings because it's handled by the dedicated camera process.
+- It receives actions from the Mineflayer physics plugin and sends them to the separate ``act_recorder`` process over network to be saved as json files on disk.
+
+See the full list of changes `here <https://github.com/YXHXianYu/prismarine-viewer-colalab/compare/master...georgysavva:prismarine-viewer-colalab:master>`_.
+
