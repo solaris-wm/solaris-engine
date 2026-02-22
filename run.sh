@@ -103,7 +103,7 @@ python3 postprocess/prepare_train_dataset.py --source-dir $BASE_DATA_COLLECTION_
 
 if [[ "$FILTER_WATER_EPISODES" == "true" ]]; then
   echo "Filtering train dataset"
-  python3 postprocess/filter_dataset.py --episodes-json $BASE_DATA_COLLECTION_DIR/water_episodes.json --dataset-dir $BASE_DATA_COLLECTION_DIR/datasets/$DATASET_NAME
+  python3 postprocess/filter_dataset.py --episodes-json $BASE_DATA_COLLECTION_DIR/water_episodes.json $BASE_DATA_COLLECTION_DIR/datasets/$DATASET_NAME
 fi
 
 echo "Splitting train dataset"
