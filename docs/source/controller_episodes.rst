@@ -85,7 +85,7 @@ Below are the 14 training episode types and what they do.
 :js:class:`buildStructure <episode-handlers.build-structure-episode.BuildStructureEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **What**: Each bot builds a wall in front of each other, or builds a platform together at the midpoint. 
+- **What**: Each bot builds a wall or tower in front of the other, or bots build a platform together at midpoint.
 - **Setup**: Gives blocks for building.
 - **Notable parameters**:
 
