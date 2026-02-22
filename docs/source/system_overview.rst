@@ -115,17 +115,13 @@ It records the graphics using ``ffmpeg``, which ``SolarisEngine`` aligns with th
 Minecraft Server Plugin
 ----------------------
 
-``SolarisEngine`` works with a standard Minecraft 1.21 Paper server that it augments with a custom server-side plugin: Episode Manager Plugin. 
-It loads on server start and, after the bots of all players have been connected, it continuously synchronizes the character states of the controller bots to their corresponding camera bots. 
-It replays all actions, positions, camera movements, and GUI elements. It keeps the camera bot invisible to all players.
+``SolarisEngine`` works with a standard Minecraft 1.21 Paper server that it augments with a custom server-side plugin. The plugin provides controls to pair controller bots with their corresponding camera bots by continuously synchronizing their character states. It replays all actions, positions, camera movements, and GUI elements, allowing the controller complete control over the player while accurately capturing its perspective with a real Minecraft client. It keeps the camera bot invisible to all players.
 
 Spectator Bot
 -------------
 
 The spectator bot is another Mineflayer bot (making it a total of 3 bots constituting a single logical player). It always stays in the Spectate mode and just follows its controller bot. 
-It doesn't produce any observations or actions. 
-It's an auxiliary bot that the Camera bot and the Episode Manager Plugin need for proper game state synchronization between the controller and the camera 
-(specifically block breaking animation).
+It always stays in the Spectate mode and follows its controller bot. This extra bot only exists to observe both the controller and the camera at once and is used internally by the plugin to synchronize block-breaking animations.
 
 Postprocessing
 --------------
