@@ -79,6 +79,8 @@ for BATCH_NAME in "${EVAL_TYPES[@]}"; do
     python3 orchestrate.py status --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs"
     python3 orchestrate.py logs --compose-dir "$COMPOSE_DIR" --tail 20 --logs-dir "$BATCH_DIR/logs"
     python3 orchestrate.py stop --compose-dir "$COMPOSE_DIR"
+    # Fix Docker root-owned file permissions so re-runs and postprocessing work
+    docker run --rm -v "$(pwd)/$BATCH_DIR:/workspace" alpine chown -R "$(id -u):$(id -g)" /workspace
     python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers 32 --output-dir "$BATCH_DIR/aligned"
 
     echo ""
