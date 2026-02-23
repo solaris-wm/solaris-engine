@@ -79,7 +79,7 @@ for BATCH_NAME in "${EVAL_TYPES[@]}"; do
     python3 orchestrate.py status --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs"
     python3 orchestrate.py logs --compose-dir "$COMPOSE_DIR" --tail 20 --logs-dir "$BATCH_DIR/logs"
     python3 orchestrate.py stop --compose-dir "$COMPOSE_DIR"
-    python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers 32 --comparison-video --output-dir "$BATCH_DIR/aligned"
+    python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers 32 --output-dir "$BATCH_DIR/aligned"
 
     echo ""
     echo "Completed eval: $BATCH_NAME"
