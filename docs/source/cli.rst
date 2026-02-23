@@ -13,7 +13,7 @@ This page describes the main command-line entry points for data collection: ``ru
 
 `[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/run.sh>`_
 
-runs the full training data collection pipeline: it generates compose configs, starts Minecraft instances per batch, collects episodes, stops them, postprocesses, then optionally filters water episodes, prepares and splits the train dataset, and annotates some test videos.
+Runs the full training data collection pipeline. It works sequentially in batches. For each batch, it generates compose configs, starts Minecraft instances, collects episodes, and postprocesses them. When all batches are ready it transforms, validates, and combines all of them into the final training dataset.
 
 Usage
 ~~~~~
@@ -66,18 +66,212 @@ When ``--filter-water-episodes true`` (the default), the script:
 
 1. After all batches complete, runs :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` to detect episodes where either Alpha or Bravo shows underwater indicators (oxygen bar HUD). Results are written to ``<output-dir>/data_collection/train/water_episodes.json``.
 
-2. After ``prepare_train_dataset.py`` runs, runs :ref:`filter_dataset.py <filter-dataset-py>` to move detected water episodes into a ``discarded/`` subdirectory, excluding them from the train dataset.
+2. After ``prepare_train_dataset.py`` runs, runs :ref:`filter_dataset.py <filter-dataset-py>` to move detected water episodes into a ``<output-dir>/datasets/<dataset-name>/discarded/`` subdirectory, excluding them from the train dataset.
 
 Use ``--filter-water-episodes false`` to skip detection and filtering and keep all episodes.
+
+.. _run-sh-output-layout:
 
 Output layout
 ~~~~~~~~~~~~~
 
-Data is written under ``<output-dir>/``:
+Data is written under ``<output-dir>/``. The following tree shows the directory structure:
 
-- ``data_collection/train/batch_<i>/`` — per-batch compose configs, logs, and aligned outputs
-- ``data_collection/train/water_episodes.json`` — (when water filtering is enabled) list of detected water episodes
-- ``datasets/<dataset-name>/`` — prepared train dataset (after postprocess and split); some test split videos are annotated by `postprocess/annotate_video_batch.py <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/annotate_video_batch.py>`_. When water filtering is enabled, excluded episodes are moved to ``datasets/<dataset-name>/discarded/``
+.. code-block:: text
+
+   <output-dir>/
+   ├── data_collection/
+   │   └── train/
+   │       ├── batch_<batch_id>/
+   │       │   ├── aligned/
+   │       │   │   ├── <timestep>_<episode_id>_Alpha_instance_<instance_id>_camera.mp4
+   │       │   │   ├── <timestep>_<episode_id>_Alpha_instance_<instance_id>_camera_meta.json
+   │       │   │   ├── <timestep>_<episode_id>_Bravo_instance_<instance_id>_camera.mp4
+   │       │   │   ├── <timestep>_<episode_id>_Bravo_instance_<instance_id>_camera_meta.json
+   │       │   │   └── ... (other episodes)
+   │       │   ├── camera/
+   │       │   │   ├── data_alpha/
+   │       │   │   │   └── <instance_id>/
+   │       │   │   ├── data_bravo/
+   │       │   │   │   └── <instance_id>/
+   │       │   │   ├── output_alpha/
+   │       │   │   │   └── <instance_id>/
+   │       │   │   │       ├── camera_alpha.mkv    
+   │       │   │   │       └── camera_alpha_meta.json
+   │       │   │   └── output_bravo/
+   │       │   │       └── <instance_id>/
+   │       │   ├── compose_configs/
+   │       │   │   ├── docker-compose-<instance_id>.yml
+   │       │   │   └── ... (one per instance)
+   │       │   ├── data/
+   │       │   │   └── <instance_id>/               
+   │       │   ├── logs/
+   │       │   │   └── docker-compose-<instance_id>/
+   │       │   │       ├── controller_alpha_instance_<instance_id>.log
+   │       │   │       ├── controller_bravo_instance_<instance_id>.log
+   │       │   │       ├── camera_alpha_instance_<instance_id>.log
+   │       │   │       ├── camera_bravo_instance_<instance_id>.log
+   │       │   │       ├── act_recorder_alpha_instance_<instance_id>.log
+   │       │   │       ├── act_recorder_bravo_instance_<instance_id>.log
+   │       │   │       ├── mc_instance_<instance_id>.log
+   │       │   │       └── ...
+   │       │   └── output/
+   │       │       ├── <timestep>_<episode_id>_Alpha_instance_<instance_id>.json
+   │       │       ├── <timestep>_<episode_id>_Alpha_instance_<instance_id>_meta.json
+   │       │       ├── <timestep>_<episode_id>_Alpha_instance_<instance_id>_episode_info.json
+   │       │       ├── <timestep>_<episode_id>_Bravo_instance_<instance_id>.json
+   │       │       ├── <timestep>_<episode_id>_Bravo_instance_<instance_id>_meta.json
+   │       │       ├── <timestep>_<episode_id>_Bravo_instance_<instance_id>_episode_info.json
+   │       │       └── ... (other episodes)
+   │       └── water_episodes.json                
+   └── datasets/
+       └── <dataset-name>/
+           ├── train/
+           │   ├── batch_<batch_id>_<episode_id>_Alpha_instance_<instance_id>.mp4
+           │   ├── batch_<batch_id>_<episode_id>_Alpha_instance_<instance_id>.json
+           │   ├── batch_<batch_id>_<episode_id>_Alpha_instance_<instance_id>_episode_info.json
+           │   ├── batch_<batch_id>_<episode_id>_Bravo_instance_<instance_id>.mp4
+           │   ├── batch_<batch_id>_<episode_id>_Bravo_instance_<instance_id>.json
+           │   ├── batch_<batch_id>_<episode_id>_Bravo_instance_<instance_id>_episode_info.json
+           │   └── ... (other episodes)
+           ├── test/
+           │   └── (same file patterns as train/)
+           ├── annotated/
+           │   └── batch_<batch_id>_<episode_id>_instance_<instance_id>.mp4_combined.mp4
+           └── discarded/                    
+               └── (water episodes moved here)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - Path (relative to ``<output-dir>``)
+     - Description
+   * - ``data_collection/train/batch_<batch_id>/aligned/``
+     - Per-episode aligned camera videos and metadata: ``<timestep>_<episode_id>_Alpha_instance_<instance_id>_camera.mp4``, ``<timestep>_<episode_id>_Alpha_instance_<instance_id>_camera_meta.json``. Produced by :ref:`process_recordings.py <process-recordings-py>`.
+   * - ``data_collection/train/batch_<batch_id>/camera/data_alpha/<instance_id>/``, ``data_bravo/<instance_id>/``
+     - Minecraft client home directories for camera bots. Contains ``.minecraft/`` and client runtime data.
+   * - ``data_collection/train/batch_<batch_id>/camera/output_alpha/<instance_id>/``, ``output_bravo/<instance_id>/``
+     - Raw camera recordings and metadata: ``camera_alpha.mkv``, ``camera_alpha_meta.json``. Input to :ref:`process_recordings.py <process-recordings-py>`.
+   * - ``data_collection/train/batch_<batch_id>/compose_configs/docker-compose-<instance_id>.yml``
+     - Generated Docker Compose file. Produced by :ref:`generate_compose.py <generate-compose-py>`.
+   * - ``data_collection/train/batch_<batch_id>/data/<instance_id>/``
+     - Minecraft server data (world, config, logs).
+   * - ``data_collection/train/batch_<batch_id>/logs/docker-compose-<instance_id>/``
+     - Docker logs for every service: controller, camera, act_recorder, mc, spectator, etc..
+   * - ``data_collection/train/batch_<batch_id>/output/``
+     - Controller actions (see :ref:`Action file format <action-file-format>`): ``<timestep>_<episode_id>_Alpha_instance_<instance_id>.json``, this file is copied to the final dataset folder as is. Episode metadata: ``<timestep>_<episode_id>_Alpha_instance_<instance_id>_meta.json``, and episode info (see :ref:`Episode info file format <episode-info-file-format>`): ``<timestep>_<episode_id>_Alpha_instance_<instance_id>_episode_info.json``, this file is copied to the final dataset folder as is.
+   * - ``data_collection/train/water_episodes.json``
+     - (When water filtering enabled) List of detected water episodes for :ref:`filter_dataset.py <filter-dataset-py>`.
+   * - ``datasets/<dataset-name>/train/``, ``test/``
+     - Prepared splits: ``batch_<batch_id>_<episode_id>_Alpha_instance_<instance_id>.mp4``, action JSON (see :ref:`Action file format <action-file-format>`), episode info JSON (see :ref:`Episode info file format <episode-info-file-format>`). Produced by :ref:`prepare_train_dataset.py <prepare-train-dataset-py>` and :ref:`split_train_test.py <split-train-test-py>`.
+   * - ``datasets/<dataset-name>/annotated/``
+     - Debug videos with overlaid actions (Alpha+Bravo concatenated). Produced by :ref:`annotate_video_batch.py <annotate-video-batch-py>`.
+   * - ``datasets/<dataset-name>/discarded/``
+     - Episodes excluded by water filtering (when enabled).
+
+.. _action-file-format:
+
+Action file format
+~~~~~~~~~~~~~~~~~~
+
+Action files (``*_Alpha_instance_*.json``, ``*_Bravo_instance_*.json``) contain a JSON array of per-frame objects, one per timestep:
+
+.. code-block:: json
+
+   [
+     {
+       "x": -4425.5,
+       "y": 64,
+       "z": 2298.5,
+       "yaw": 4.636,
+       "pitch": 0,
+       "action": {
+         "forward": false,
+         "back": false,
+         "left": false,
+         "right": false,
+         "jump": false,
+         "sprint": false,
+         "sneak": false,
+         "camera": [0, 0],
+         "attack": false,
+         "use": false,
+         "mount": false,
+         "dismount": false,
+         "place_block": false,
+         "place_entity": false,
+         "mine": false,
+         "hotbar.1": false,
+         "hotbar.2": false,
+         "hotbar.3": false,
+         "hotbar.4": false,
+         "hotbar.5": false,
+         "hotbar.6": false,
+         "hotbar.7": false,
+         "hotbar.8": false,
+         "hotbar.9": false
+       },
+       "inventory": {
+         "quickBarSlot": 4,
+         "mainInventory": [],
+         "heldItem": null,
+         "offHandItem": null,
+         "hotbar": [
+           {
+             "type": 1,
+             "count": 64,
+             "name": "stone",
+             "displayName": "Stone",
+             "slot": 36
+           },
+           {
+             "type": 840,
+             "count": 1,
+             "name": "diamond_pickaxe",
+             "displayName": "Diamond Pickaxe",
+             "slot": 37
+           }
+         ]
+       },
+       "renderTime": 1770812761734,
+       "physicsTime": 276613.613413,
+       "relativeTimeMs": 0.0,
+       "epochTime": 1770812761.734,
+       "worldAgeTicks": 5649,
+       "isInWater": false,
+       "frame_count": 0,
+       "episode_id": 0,
+       "extra_info": {
+         "seed": 42
+       }
+     }
+   ]
+
+The array contains one such object per frame.
+
+.. _episode-info-file-format:
+
+Episode info file format
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Episode info files (``*_episode_info.json``) contain a single JSON object:
+
+.. code-block:: json
+
+   {
+     "timestamp": "2026-02-11T12:25:11.506Z",
+     "bot_name": "Alpha",
+     "world_type": "normal",
+     "episode_number": 0,
+     "episode_type": "mine",
+     "instance_id": 1,
+     "encountered_error": false,
+     "peer_encountered_error": false,
+     "bot_died": false,
+     "episode_recording_started": true,
+     "eval_metadata": {}
+   }
 
 .. _run-evals-sh:
 
@@ -86,7 +280,7 @@ Data is written under ``<output-dir>/``:
 
 `[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/run_evals.sh>`_
 
-Runs evaluation data collection for several episode types, then prepares the eval datasets and annotates some of the videos for debugging.
+Runs evaluation data collection for several episode types. It works sequentially per episode type, where an episode type acts as a batch. Just as in :ref:`run.sh <run-sh>`, for each batch, it generates compose configs, starts Minecraft instances, collects episodes, and postprocesses them. When all batches are ready, it prepares each batch (episode type)into a separate evaluation dataset.
 
 Usage
 ~~~~~
@@ -135,8 +329,43 @@ For ``turnToLookEval`` and ``turnToLookOppositeEval`` the script uses 1 normal w
 Output layout
 ~~~~~~~~~~~~~
 
-- ``<output-dir>/data_collection/eval/<eval_type>/`` — per-type compose configs, logs, and aligned outputs
-- ``<output-dir>/datasets/eval/`` — prepared eval datasets (from :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>`); some videos are annotated by :ref:`annotate_video_batch.py <annotate-video-batch-py>`
+Data is written under ``<output-dir>/``. The following tree shows the directory structure:
+
+.. code-block:: text
+
+   <output-dir>/
+   ├── data_collection/
+   │   └── eval/
+   │       ├── rotationEval/
+   │       │   └── ...
+   │       ├── translationEval/
+   │       │   └── ...
+   │       ├── structureEval/
+   │       │   └── ...
+   │       └── ... (other eval types)
+   └── datasets/
+       └── eval/
+           ├── rotationEval/
+           │   └── test/
+           │       └── ...
+           ├── translationEval/
+           │   └── test/
+           │       └── ...
+           ├── structureEval/
+           │   └── test/
+           │       └── ...
+           └── ... (other eval types)
+
+.. list-table::
+   :header-rows: 1
+   :widths: 45 55
+
+   * - Path (relative to ``<output-dir>``)
+     - Description
+   * - ``data_collection/eval/<eval_type>/``
+     - Per-type batch directory. Structure under each ``<eval_type>`` (e.g. ``rotationEval``) mirrors ``data_collection/train/batch_<batch_id>/`` in :ref:`run.sh output layout <run-sh-output-layout>`: ``aligned/``, ``camera/``, ``compose_configs/``, ``data/``, ``logs/``, ``output/``. 
+   * - ``datasets/eval/<eval_type>/``
+     - Prepared eval datasets per type. Each ``<eval_type>`` has only a ``test/`` subdir; structure and file patterns mirror ``datasets/<dataset-name>/test/`` in :ref:`run.sh output layout <run-sh-output-layout>`. Produced by :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>`.
 
 Postprocessing
 --------------

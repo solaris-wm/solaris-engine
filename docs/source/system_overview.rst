@@ -9,9 +9,10 @@ Data Collection Workflow
 ------------------------
 
 The sole entry point to the data collection workflow is the :ref:`run.sh <run-sh>`/:ref:`run_evals.sh <run-evals-sh>` scripts that generate the training and eval datasets. 
-They generate Docker Compose files tying together the system components: Controller Bot, Camera Bot, Minecraft Server Plugin, Spectator Bot, 
-execute the docker compose instances in isolation in parallel, 
-and run the postprocessing scripts on the host to produce the final datasets.
+They generate :ref:`Docker Compose files <docker>` tying together the system components: :ref:`Controller Bot <controller>`, :ref:`Camera Bot <camera>`, :ref:`Minecraft Server Plugin <minecraft-server-plugin>`, :ref:`Spectator Bot <spectator-bot>`, 
+execute the docker compose instances in isolation in parallel, run the :ref:`postprocessing scripts <postprocessing>` on the host to produce the aligned video-action episodes, and :ref:`transform <datasets-preparation>` the collected data into the format of training and eval datasets.
+
+.. _controller:
 
 Controller
 ----------
@@ -92,6 +93,8 @@ The controller is responsible for action recording of the playing bot. It saves 
 
 
 
+.. _camera:
+
 Camera
 ------
 
@@ -106,11 +109,15 @@ Minecraft Server Plugin
 
 ``SolarisEngine`` works with a standard Minecraft 1.21 Paper server that it augments with a custom server-side plugin. The plugin provides controls to pair controller bots with their corresponding camera bots by continuously synchronizing their character states. It replays all actions, positions, camera movements, and GUI elements, allowing the controller complete control over the player while accurately capturing its perspective with a real Minecraft client. It keeps the camera bot invisible to all players.
 
+.. _spectator-bot:
+
 Spectator Bot
 -------------
 
 The spectator bot is another Mineflayer bot (making it a total of 3 bots constituting a single logical player). It always stays in the Spectate mode and just follows its controller bot. 
 It always stays in the Spectate mode and follows its controller bot. This extra bot only exists to observe both the controller and the camera at once and is used internally by the plugin to synchronize block-breaking animations.
+
+.. _postprocessing:
 
 Postprocessing
 --------------
@@ -119,20 +126,31 @@ After all the controller and camera processes finish, ``SolarisEngine`` cuts the
 according to the episode action json files produced by the controller. The postprocessing script :ref:`process_recordings.py <process-recordings-py>` 
 uses ``ffprobe`` to extract frames corresponding to their actions based on the per-frame wallclock timestamps.
 
-TODO: @daohanlu you can probably talk more about the new frame extraction here.
-
 An episode always consists of ``N`` actions and ``N`` observations, with the observation at index ``t`` being a physics tick (~``50ms``) after the action at index ``t``, 
 making the observation a causal consequence of applying the action.
 
-The scripts :ref:`prepare_train_dataset.py <prepare-train-dataset-py>`, :ref:`split_train_test.py <split-train-test-py>`, and :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>` validate and transform the output of ``SolarisEngine`` 
-to the final training and evaluation dataset formats `Solaris <https://github.com/solaris-wm/solaris>`_ model code expects.
 
-The two optional scripts :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` and :ref:`filter_dataset.py <filter-dataset-py>` detect episodes 
-where either Alpha or Bravo is underwater by analyzing the oxygen bar HUD and excluding them from the train dataset.
+.. _datasets-preparation:
 
-The optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions. 
+Datasets Preparation
+--------------------
+
+As a last step, the engine transforms the collected data into the training and evaluation dataset formats `Solaris <https://github.com/solaris-wm/solaris>`_ model code expects. Although the final format of training and eval datasets is the same, the procedure of obtaining them differs depending on the dataset type.
+
+Training
+~~~~~~~~
+
+
+The :ref:`prepare_train_dataset.py <prepare-train-dataset-py>` script validates and transforms the output of ``SolarisEngine``  to the final dataset format, and :ref:`split_train_test.py <split-train-test-py>` splits the dataset folder into ``train/`` and ``test/`` subfolders. The two optional scripts :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` and :ref:`filter_dataset.py <filter-dataset-py>` detect episodes 
+where either Alpha or Bravo is underwater by analyzing the oxygen bar HUD and excluding them from the train dataset. Lastly, the optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions. 
 It's a helpful debug tool to see how well all bots behave in an episode and that their actions are properly aligned with the observations.
 
+Eval
+~~~~
+
+The :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>` script validates and transforms the output of ``SolarisEngine``  to the final dataset format.
+
+.. _docker:
 
 Docker
 ------
@@ -148,8 +166,6 @@ enabling data collection at scale.
 
 The camera bot has a dedicated Docker image, ``solaris-engine-camera``, configured with a Java runtime and the official Minecraft Java client running headless. 
 It does its rendering on the GPU and requires the host machine to have one to ensure proper Minecraft graphic rendering FPS.
-
-TODO: @daohanlu add more details.
 
 The controller bot, spectator bot, and ``act_recording`` Docker containers all share the ``solaris-engine-base`` Docker image that has both Node and Python environments set up. 
 The Minecraft server uses the publicly available ``itzg/minecraft-server`` Docker image.

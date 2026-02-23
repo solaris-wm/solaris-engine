@@ -91,8 +91,3 @@ echo "All eval episodes completed!"
 echo "=========================================="
 
 python3 postprocess/prepare_eval_datasets.py --source-dir $BASE_DATA_COLLECTION_DIR --destination-dir $BASE_DATA_DIR/datasets/eval
-
-
-echo "Annotating some of the videos"
-
-python3 postprocess/annotate_video_batch.py $BASE_DATA_DIR/datasets/eval 
