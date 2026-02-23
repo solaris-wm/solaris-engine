@@ -13,7 +13,7 @@ This page describes the main command-line entry points for data collection: ``ru
 
 `[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/run.sh>`_
 
-Runs the full training data collection pipeline. It works sequentially in batches. For each batch, it generates compose configs, starts Minecraft instances, collects episodes, and postprocesses them. When all batches are ready it transforms, validates, and combines all of them into the final training dataset.
+Runs the full training data collection pipeline. It works sequentially in batches. For each batch, it generates compose configs, starts Minecraft instances, collects episodes, and postprocesses them. When all batches are ready, it transforms, validates, and combines all of them into the final training dataset.
 
 Usage
 ~~~~~
@@ -158,7 +158,7 @@ Data is written under ``<output-dir>/``. The following tree shows the directory 
    * - ``data_collection/train/batch_<batch_id>/data/<instance_id>/``
      - Minecraft server data (world, config, logs).
    * - ``data_collection/train/batch_<batch_id>/logs/docker-compose-<instance_id>/``
-     - Docker logs for every service: controller, camera, act_recorder, mc, spectator, etc..
+     - Docker logs for every service: controller, camera, act_recorder, mc, spectator, etc.
    * - ``data_collection/train/batch_<batch_id>/output/``
      - Controller actions (see :ref:`Action file format <action-file-format>`): ``<timestep>_<episode_id>_Alpha_instance_<instance_id>.json``, this file is copied to the final dataset folder as is. Episode metadata: ``<timestep>_<episode_id>_Alpha_instance_<instance_id>_meta.json``, and episode info (see :ref:`Episode info file format <episode-info-file-format>`): ``<timestep>_<episode_id>_Alpha_instance_<instance_id>_episode_info.json``, this file is copied to the final dataset folder as is.
    * - ``data_collection/train/water_episodes.json``
