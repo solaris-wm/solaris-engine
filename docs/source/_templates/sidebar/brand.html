@@ -1,4 +1,12 @@
-{% extends "furo/sidebar/brand.html" %} {% block brand_content %} {{ super() }}
+{% extends "furo/sidebar/brand.html" %} {% block brand_content %}
+<a
+  class="sidebar-brand{% if logo %} centered{% endif %}"
+  href="{{ pathto(master_doc) }}"
+>
+  <div class="sidebar-logo-container">
+    <img class="sidebar-logo" src="{{ pathto('_static/logo.png', 1) }}" alt="Logo" />
+  </div>
+</a>
 <div style="text-align: center">
   <script async defer src="https://buttons.github.io/buttons.js"></script>
   <!-- Place this tag where you want the button to render. -->

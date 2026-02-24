@@ -1,7 +1,8 @@
-SolarisEngine
-=============
+.. image:: _static/logo.png
+   :alt: SolarisEngine
+   :align: center
 
-.. image:: ../dataset-collage.gif
+.. image:: _static/dataset-collage.gif
    :alt: SolarisEngine dataset collage
    :align: center
 
