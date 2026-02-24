@@ -2,6 +2,10 @@
    :alt: SolarisEngine
    :align: center
 
+.. raw:: html
+
+   <br />
+
 .. image:: _static/dataset-collage.gif
    :alt: SolarisEngine dataset collage
    :align: center
