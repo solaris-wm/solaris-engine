@@ -21,7 +21,8 @@
 
 const { Vec3 } = require("vec3");
 
-const { ensureItemInHand, placeAt } = require("../primitives/building");
+const { placeAt } = require("../primitives/building");
+const { ensureItemInHand } = require("../primitives/items");
 const { digBlock } = require("../primitives/digging");
 const { ensureBotHasEnough, unequipHand } = require("../primitives/items");
 const { land_pos, lookAtBot } = require("../primitives/movement");
