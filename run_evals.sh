@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Defaults
-BASE_DATA_DIR="output2"
+BASE_DATA_DIR="output"
 
 # Parse CLI args
 while [[ $# -gt 0 ]]; do
@@ -12,7 +12,7 @@ while [[ $# -gt 0 ]]; do
             ;;
         -h|--help)
             echo "Usage: $0 [OPTIONS]"
-            echo "  --output-dir DIR   Base data directory (default: output2)"
+            echo "  --output-dir DIR   Base data directory (default: output)"
             echo "  -h, --help         Show this help"
             exit 0
             ;;

@@ -1,7 +1,7 @@
 set -e
 
 # Defaults
-BASE_DATA_DIR="output2"
+BASE_DATA_DIR="output"
 NUM_BATCHES=2
 NUM_FLAT_WORLD=1
 NUM_NORMAL_WORLD=1
@@ -42,7 +42,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
-      echo "  --output-dir DIR       Base data directory (default: output2)"
+      echo "  --output-dir DIR       Base data directory (default: output)"
       echo "  --num-batches N        Number of batches (default: 2)"
       echo "  --num-flat-world N     Number of flat worlds per batch (default: 1)"
       echo "  --num-normal-world N   Number of normal worlds per batch (default: 1)"
