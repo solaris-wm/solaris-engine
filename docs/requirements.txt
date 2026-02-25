@@ -1,0 +1,7 @@
+sphinx
+myst-parser
+furo
+accessible-pygments
+sphinx-autobuild
+sphinx-js
+sphinxext-opengraph

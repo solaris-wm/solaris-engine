@@ -1,0 +1,17 @@
+node_modules
+camera/data_alpha
+camera/data_bravo
+camera/output_alpha
+camera/output_bravo
+output*/
+data*/
+.vscode/
+logs/
+aligned/
+videos/
+**/__pycache__/
+.git/
+.gitignore
+*.md
+compose_configs/
+

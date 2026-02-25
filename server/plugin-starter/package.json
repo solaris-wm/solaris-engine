@@ -1,0 +1,9 @@
+{
+  "name": "camera-spectator-controller",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "rcon-client": "^4.0.6"
+  }
+}
