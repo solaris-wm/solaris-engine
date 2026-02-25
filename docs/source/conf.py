@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import date
 import os
+from datetime import date
 from pathlib import Path
 
 project = "SolarisEngine"
@@ -11,7 +11,7 @@ copyright = f"{date.today().year}, {author}"
 extensions = [
     "myst_parser",
     "sphinx_js",
-
+    "sphinxext.opengraph",
 ]
 
 # sphinx-js configuration (https://pypi.org/project/sphinx-js/)
@@ -45,6 +45,11 @@ exclude_patterns = ["_build", "build", "Thumbs.db", ".DS_Store"]
 html_theme = "furo"
 html_static_path = ["_static"]
 html_title = project
+
+ogp_site_url = "https://solaris-wm.github.io/solaris-engine/"  # final docs base URL
+ogp_image = (
+    "https://solaris-wm.github.io/solaris-engine/_static/solaris-engine-socials.png"
+)
 
 # Support both Markdown and reStructuredText sources.
 source_suffix = {

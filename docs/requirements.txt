@@ -4,3 +4,4 @@ furo
 accessible-pygments
 sphinx-autobuild
 sphinx-js
+sphinxext-opengraph
