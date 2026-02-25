@@ -1,3 +1,6 @@
+:og:title: SolarisEngine
+:og:description: Scalable Minecraft multiplayer data collection engine
+
 .. image:: _static/logo.png
    :alt: SolarisEngine
    :align: center
