@@ -2,7 +2,7 @@
 """
 Batch detect water episodes by detecting the oxygen bar HUD element in video frames.
 
-This script uses multiprocessing to process all video files in all 
+This script uses multiprocessing to process all video files in all
 batch directories and outputs JSON files categorizing episodes as water or non-water.
 
 Episodes are processed as Alpha-Bravo pairs - if either video shows underwater indicators,
@@ -319,7 +319,6 @@ def process_batch_folder(
     for result in results:
         results_by_filename[result.filename] = result
 
-
     # Categorize episode pairs
     water_episodes: List[EpisodePairResult] = []
     non_water_episodes: List[EpisodePairResult] = []
@@ -450,7 +449,7 @@ def main():
     args = parser.parse_args()
 
     # Set number of workers
-    num_workers = args.num_workers if args.num_workers else mp.cpu_count()
+    num_workers = args.num_workers if args.num_workers else mp.cpu_count() // 4
     print(f"Using {num_workers} worker processes")
     print(f"Threshold: {args.threshold}")
     print(f"Top percentile: {args.top_percentile}%")
