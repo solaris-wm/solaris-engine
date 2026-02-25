@@ -97,7 +97,7 @@ done
 
 if [[ "$FILTER_WATER_EPISODES" == "true" ]]; then
   echo "Detecting water episodes"
-  python3 postprocess/detect_water_episodes_batch.py --base-path $BASE_DATA_COLLECTION_DIR --out-path $BASE_DATA_COLLECTION_DIR/water_episodes.json
+  python3 postprocess/detect_water_episodes_batch.py --base-path $BASE_DATA_COLLECTION_DIR --num-workers 8 --out-path $BASE_DATA_COLLECTION_DIR/water_episodes.json
 fi
 
 echo "Preparing train dataset"
