@@ -98,7 +98,7 @@ class InstanceManager:
     def __init__(
         self, compose_dir="compose_configs", build_images=False, logs_dir="logs"
     ):
-        self.compose_dir = Path(compose_dir)
+        self.compose_dir = Path(compose_dir).resolve()
         self.running_instances = {}
         self.compose_bin = detect_compose_bin()
         self.logs_dir = Path(logs_dir)
@@ -122,7 +122,7 @@ class InstanceManager:
 
     def get_compose_files(self):
         """Get all Docker Compose files in the config directory."""
-        return sorted(list(self.compose_dir.glob("docker-compose-*.yml")))
+        return sorted(p.resolve() for p in self.compose_dir.glob("docker-compose-*.yml"))
 
     def build_instance(self, compose_file):
         """Build Docker images for a single instance."""

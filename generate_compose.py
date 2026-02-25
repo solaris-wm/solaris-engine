@@ -742,7 +742,7 @@ def main():
 
     # Create compose directory
     compose_dir = Path(args.compose_dir)
-    compose_dir.mkdir(exist_ok=True)
+    compose_dir.mkdir(parents=True, exist_ok=True)
 
     # Determine number of instances and world plan
     use_split = (args.num_flatland_world > 0) or (args.num_normal_world > 0)

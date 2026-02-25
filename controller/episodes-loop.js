@@ -303,11 +303,11 @@ async function runSingleEpisode(
      */
     const cleanupEpisodeScopedHandlers = () => {
       process.removeListener("unhandledRejection", handleAnyError);
-      process.removeListener("unhandledException", handleAnyError);
+      process.removeListener("uncaughtException", handleAnyError);
       bot.removeListener("death", handleBotDeath);
     };
     process.on("unhandledRejection", handleAnyError);
-    process.on("unhandledException", handleAnyError);
+    process.on("uncaughtException", handleAnyError);
     bot.once("death", handleBotDeath);
 
     // Ensure we clean up episode-scoped handlers when the episode resolves

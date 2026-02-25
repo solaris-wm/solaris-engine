@@ -1,5 +1,7 @@
+set -e
+
 # Defaults
-BASE_DATA_DIR="output2"
+BASE_DATA_DIR="output"
 NUM_BATCHES=2
 NUM_FLAT_WORLD=1
 NUM_NORMAL_WORLD=1
@@ -40,7 +42,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
-      echo "  --output-dir DIR       Base data directory (default: output2)"
+      echo "  --output-dir DIR       Base data directory (default: output)"
       echo "  --num-batches N        Number of batches (default: 2)"
       echo "  --num-flat-world N     Number of flat worlds per batch (default: 1)"
       echo "  --num-normal-world N   Number of normal worlds per batch (default: 1)"
@@ -88,12 +90,14 @@ for ((i=0; i<NUM_BATCHES; i++)); do
     python3 orchestrate.py status --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs"
     python3 orchestrate.py logs --compose-dir "$COMPOSE_DIR" --tail 20 --logs-dir "$BATCH_DIR/logs"
     python3 orchestrate.py stop --compose-dir "$COMPOSE_DIR"
-    python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers 32 --comparison-video --output-dir "$BATCH_DIR/aligned"
+    # Fix Docker root-owned file permissions so re-runs and postprocessing work
+    docker run --rm -v "$(pwd)/$BATCH_DIR:/workspace" alpine chown -R "$(id -u):$(id -g)" /workspace
+    python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers 32 --output-dir "$BATCH_DIR/aligned"
 done
 
 if [[ "$FILTER_WATER_EPISODES" == "true" ]]; then
   echo "Detecting water episodes"
-  python3 postprocess/detect_water_episodes_batch.py $BASE_DATA_COLLECTION_DIR --out-path $BASE_DATA_COLLECTION_DIR/water_episodes.json
+  python3 postprocess/detect_water_episodes_batch.py --base-path $BASE_DATA_COLLECTION_DIR --out-path $BASE_DATA_COLLECTION_DIR/water_episodes.json
 fi
 
 echo "Preparing train dataset"
@@ -101,7 +105,7 @@ python3 postprocess/prepare_train_dataset.py --source-dir $BASE_DATA_COLLECTION_
 
 if [[ "$FILTER_WATER_EPISODES" == "true" ]]; then
   echo "Filtering train dataset"
-  python3 postprocess/filter_dataset.py --episodes-json $BASE_DATA_COLLECTION_DIR/water_episodes.json --dataset-dir $BASE_DATA_COLLECTION_DIR/datasets/$DATASET_NAME
+  python3 postprocess/filter_dataset.py --episodes-json $BASE_DATA_COLLECTION_DIR/water_episodes.json $BASE_DATA_DIR/datasets/$DATASET_NAME
 fi
 
 echo "Splitting train dataset"

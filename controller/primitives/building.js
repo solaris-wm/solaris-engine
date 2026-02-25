@@ -11,6 +11,7 @@ const {
   getScaffoldingBlockIds,
   gotoWithTimeout,
   initializePathfinder,
+  sleep,
   stopPathfinder,
 } = require("./movement");
 
