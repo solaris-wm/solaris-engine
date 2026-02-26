@@ -31,65 +31,77 @@ The controller is responsible for action recording of the playing bot. It saves 
      - Type
      - Description
    * - forward
-     - bool/continuous
+     - bool/sustained
      - Player moving forward (W).
    * - back
-     - bool/continuous
+     - bool/sustained
      - Player moving backward (S).
    * - left
-     - bool/continuous
+     - bool/sustained
      - Player strafing left (A).
    * - right
-     - bool/continuous
+     - bool/sustained
      - Player strafing right (D).
    * - jump
-     - bool/continuous
+     - bool/sustained
      - Player jumping.
    * - sprint
-     - bool/continuous
+     - bool/sustained
      - Player sprinting.
    * - sneak
-     - bool/continuous
+     - bool/sustained
      - Player sneaking.
    * - camera
-     - vec2/continuous
+     - vec2f/sustained
      - Change in player camera orientation (yaw, pitch).
    * - attack
-     - bool/discrete
+     - bool/once
      - Player attacks.
    * - use
-     - bool/discrete
+     - bool/once
      - Player uses / interacts with the environment.
    * - mount
-     - bool/discrete
+     - bool/once
      - Player mounts an entity/vehicle.
    * - dismount
-     - bool/discrete
+     - bool/once
      - Player dismounts.
    * - place_block
-     - bool/discrete
+     - bool/once
      - Player places a block using the currently selected item.
    * - place_entity
-     - bool/discrete
+     - bool/once
      - Player places an entity item.
    * - mine
-     - bool/continuous
+     - bool/sustained
      - Player mining a block.
    * - hotbar.1
-     - bool/discrete
+     - bool/once
      - Player selects hotbar slot 1.
    * - hotbar.2
-     - bool/discrete
+     - bool/once
      - Player selects hotbar slot 2.
    * - hotbar.3
-     - bool/discrete
+     - bool/once
      - Player selects hotbar slot 3.
    * - hotbar.4
-     - bool/discrete
+     - bool/once
      - Player selects hotbar slot 4.
    * - hotbar.5
-     - bool/discrete
+     - bool/once
      - Player selects hotbar slot 5.
+   * - hotbar.6
+     - bool/once
+     - Player selects hotbar slot 6.
+   * - hotbar.7
+     - bool/once
+     - Player selects hotbar slot 7.
+   * - hotbar.8
+     - bool/once
+     - Player selects hotbar slot 8.
+   * - hotbar.9
+     - bool/once
+     - Player selects hotbar slot 9.
 
 
 
@@ -98,9 +110,9 @@ The controller is responsible for action recording of the playing bot. It saves 
 Camera
 ------
 
-The Camera Bot is the official Minecraft Java Client that runs headless. It connects to the server and pairs up with the corresponding Controller Bot of that player, 
+The Camera Bot is the official Minecraft Java Client that runs headlessly on an ``Xvfb`` virtual display. We enable GPU-accelerated graphics via ``vglrun -d "egl"``. It connects to the server and pairs up with the corresponding Controller Bot of that player, 
 so that these two processes are logically a single player. Through the :ref:`Minecraft Server Plugin <minecraft-server-plugin>`, the camera bot, at all times, shares the first person perspective of its controller bot. 
-It records the graphics using ``ffmpeg``, which ``SolarisEngine`` aligns with the actions in postprocessing to form a final episode. Both the controller and camera record at ``20`` FPS. The observations (video) produced by the camera have the dimensions of ``1280×720``.
+The Camera Bot captures graphics using ``ffmpeg`` with the ``-f x11grab`` option, which grabs the X11 virtual display. We enable NVENC hardware encoding via ``-c:v h264_nvenc``. ``SolarisEngine`` aligns the video and actions together in postprocessing to form a final episode. Both the controller (actions) and camera (video) bots record at ``20`` FPS. We save videos at ``1280×720``, though this is flexible.
 
 .. _minecraft-server-plugin:
 
@@ -124,10 +136,11 @@ Postprocessing
 
 After all the controller and camera processes finish, ``SolarisEngine`` cuts the single, raw camera output of a player into episodes, 
 according to the episode action json files produced by the controller. The postprocessing script :ref:`process_recordings.py <process-recordings-py>` 
-uses ``ffprobe`` to extract frames corresponding to their actions based on the per-frame wallclock timestamps.
+uses ``ffprobe`` to extract frames corresponding to their actions based on the per-frame wallclock timestamps. Note this is only possible because we 
+tell ``ffmpeg`` to write absolute timestamps during recording via ``-use_wallclock_as_timestamps 1 -copyts -vsync 0 -bf 0``. By default, ffmpeg does not write absolute timestamps, which are crucial to ensure perfect frame-action alignment.
 
-An episode always consists of ``N`` actions and ``N`` observations, with the observation at index ``t`` being a physics tick (~``50ms``) after the action at index ``t``, 
-making the observation a causal consequence of applying the action.
+An episode always consists of ``N`` actions and ``N`` observations. The observation at index ``t`` corresponds to the frame recorded at a wall-clock time at or after the action at index ``t``, 
+ensuring correct causality (actions causes observations).
 
 
 .. _datasets-preparation:
@@ -164,7 +177,7 @@ that run at startup to set up the Minecraft server and the server-side plugin.
 The outer layer of Python scripts, :ref:`generate_compose.py <generate-compose-py>` and :ref:`orchestrate.py <orchestrate-py>`, generates a configurable number of such Docker Compose instances and executes them in parallel, 
 enabling data collection at scale.
 
-The camera bot has a dedicated Docker image, ``solaris-engine-camera``, configured with a Java runtime and the official Minecraft Java client running headless. 
+The camera bot has a dedicated Docker image, ``solaris-engine-camera``, configured with a Java runtime and the official Minecraft Java client running headlessly. 
 It does its rendering on the GPU and requires the host machine to have one to ensure proper Minecraft graphic rendering FPS.
 
 The controller bot, spectator bot, and ``act_recording`` Docker containers all share the ``solaris-engine-base`` Docker image that has both Node and Python environments set up. 
