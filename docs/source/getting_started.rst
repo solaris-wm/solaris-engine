@@ -20,14 +20,6 @@ Performance Notes
 
 Based on our testing, one RTX 4090 24GB comfortably runs 4 docker instances (for a total of 8 players). We observe a VRAM usage of around 1.2 GB per docker instance. Any GPU ≥ RTX 2080 Ti is also expected to work. You need at least 4 (modern) CPU cores per instance. If you observe smooth graphics but slow loading or animation desyncs, it likely reflects a CPU bottleneck.
 
-Known Issue(s)
-----------
-At the moment, only physical GPU 0 can be used due to an `NVIDIA driver bug <https://forums.developer.nvidia.com/t/nvenc-and-nvdec-work-on-only-one-gpu-with-multi-gpu-setups-with-nvidia-container-toolkit-in-driver-565/347361>`_ that affects NVIDIA Container Toolkit and NVENC. Since NVIDA limits the number of parallel NVENC encoding streams per GPU to 8, this also means there can be at most 8 concurrent graphics-enabled players.
-
-We hope to include a multi-GPU fix after NVIDIA addresses the driver bug, which will also unlock > 8 players. While NVENC encoding is helpful for reducing CPU load, we might test CPU encoding options to enable > 8 players.
-
-
-
 How to Run
 ----------
 
@@ -52,3 +44,9 @@ How to Run
 The :ref:`run.sh <run-sh>` and :ref:`run_evals.sh <run-evals-sh>` will generate and store training and eval datasets in ``./output/datasets/``.
 
 See :doc:`system_overview` for the explanation of what happens under the hood.
+
+Known Issue(s)
+----------
+At the moment, only physical GPU 0 can be used due to an `NVIDIA driver bug <https://forums.developer.nvidia.com/t/nvenc-and-nvdec-work-on-only-one-gpu-with-multi-gpu-setups-with-nvidia-container-toolkit-in-driver-565/347361>`_ that affects NVIDIA Container Toolkit and NVENC. Since NVIDA limits the number of parallel NVENC encoding streams per GPU to 8, this also means there can be at most 8 concurrent graphics-enabled players.
+
+We hope to include a multi-GPU fix after NVIDIA addresses the driver bug, which will also unlock > 8 players. While NVENC encoding is helpful for reducing CPU load, we might test CPU encoding options to enable > 8 players.
