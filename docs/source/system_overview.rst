@@ -140,7 +140,7 @@ uses ``ffprobe`` to extract frames corresponding to their actions based on the p
 tell ``ffmpeg`` to write absolute timestamps during recording via ``-use_wallclock_as_timestamps 1 -copyts -vsync 0 -bf 0``. By default, ffmpeg does not write absolute timestamps, which are crucial to ensure perfect frame-action alignment.
 
 An episode always consists of ``N`` actions and ``N`` observations. The observation at index ``t`` corresponds to the frame recorded at a wall-clock time at or after the action at index ``t``, 
-ensuring correct causality (actions causes observations).
+ensuring correct causality (observations come after actions).
 
 
 .. _datasets-preparation:
