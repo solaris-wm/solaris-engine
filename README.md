@@ -7,4 +7,4 @@ This repository contains a multiplayer data collection framework for Minecraft. 
 
 ## Documentation
 
-The framework documentation is available [here](https://solaris-wm.github.io/solaris-engine/index.html).
+The framework documentation is available at [solaris-wm.github.io/solaris-engine/](https://solaris-wm.github.io/solaris-engine/index.html).
