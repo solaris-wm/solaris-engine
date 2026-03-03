@@ -179,14 +179,14 @@ EOF
       -use_wallclock_as_timestamps 1 \
       -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
       -copyts -vsync 0 \
-      -c:v h264_nvenc -preset p4 -bf 0 -pix_fmt yuv420p "$RECORDING_PATH" &
+      -c:v h264_nvenc -preset p4 -rc:v vbr -b:v 0 -bf 0 -cq 17 -pix_fmt yuv420p "$RECORDING_PATH" &
   else
     echo "[client] Using CPU encoding (libx264, MKV) with wallclock timestamps"
     ffmpeg -hide_banner -loglevel info -y \
       -use_wallclock_as_timestamps 1 \
       -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
       -copyts -vsync 0 \
-      -codec:v libx264 -preset veryfast -bf 0 -pix_fmt yuv420p "$RECORDING_PATH" &
+      -codec:v libx264 -preset veryfast -bf 0 -crf 17 -pix_fmt yuv420p "$RECORDING_PATH" &
   fi
   FFMPEG_PID=$!
   PIDS="$PIDS $FFMPEG_PID"

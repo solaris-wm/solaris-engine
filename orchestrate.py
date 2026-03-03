@@ -501,7 +501,7 @@ class InstanceManager:
         except Exception:
             return
 
-    def _process_single_recording(self, job, comparison_video, output_dir=None):
+    def _process_single_recording(self, job, comparison_video, output_dir=None, encoder=None):
         """Process a single episode recording."""
         script_path = Path(__file__).parent / "postprocess" / "process_recordings.py"
 
@@ -520,29 +520,41 @@ class InstanceManager:
             output_dir,
         ]
 
+        if encoder:
+            cmd.extend(["--encoder", encoder])
+
         if comparison_video:
             cmd.append("--comparison-video")
 
         try:
+            t0 = time.time()
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=600,  # 10 minute timeout per episode
             )
+            elapsed = time.time() - t0
+            video_dur = 0.0
+            if result.stdout:
+                for line in result.stdout.splitlines():
+                    if line.startswith("[align:video_duration_sec]"):
+                        try:
+                            video_dur = float(line.split()[-1])
+                        except ValueError:
+                            pass
             if result.returncode != 0:
-                # Print stderr to help debug
                 if result.stderr:
                     print(f"  ERROR: {result.stderr.strip()}")
                 if result.stdout:
                     print(f"  OUTPUT: {result.stdout.strip()}")
-            return result.returncode == 0
+            return result.returncode == 0, elapsed, video_dur
         except subprocess.TimeoutExpired:
             print(f"  Timeout processing {job['episode_file'].name}")
-            return False
+            return False, 0.0, 0.0
         except Exception as e:
             print(f"  Error processing {job['episode_file'].name}: {e}")
-            return False
+            return False, 0.0, 0.0
 
     def _parse_instance_from_filename(self, filename: str) -> int:
         """Extract instance ID from filename like '..._instance_000.json'."""
@@ -554,7 +566,7 @@ class InstanceManager:
         return 0
 
     def postprocess_recordings(
-        self, workers=4, comparison_video=False, debug=False, output_dir=None
+        self, workers=4, comparison_video=False, debug=False, output_dir=None, encoder=None
     ):
         """Process camera recordings for all instances in parallel.
 
@@ -567,6 +579,11 @@ class InstanceManager:
         if not output_dir:
             print("Error: --output-dir is required for postprocess")
             return
+
+        if encoder == "h264_nvenc" and workers > 8:
+            print(f"Warning: h264_nvenc supports at most 8 concurrent sessions; "
+                  f"capping workers from {workers} to 8")
+            workers = 8
 
         output_dir = Path(output_dir)
         root = output_dir.parent
@@ -640,6 +657,10 @@ class InstanceManager:
         )
         print(f"Processing with {workers} parallel workers...\n")
 
+        wall_start = time.time()
+        total_encode_time = 0.0
+        total_video_duration = 0.0
+
         # Process jobs in parallel
         with ThreadPoolExecutor(max_workers=workers) as executor:
             futures = {
@@ -648,6 +669,7 @@ class InstanceManager:
                     job,
                     comparison_video,
                     output_dir,
+                    encoder,
                 ): job
                 for job in jobs
             }
@@ -658,12 +680,14 @@ class InstanceManager:
             for future in as_completed(futures):
                 job = futures[future]
                 try:
-                    success = future.result()
+                    success, elapsed, video_dur = future.result()
                     completed += 1
+                    total_encode_time += elapsed
+                    total_video_duration += video_dur
                     status = "✅" if success else "❌"
                     episode_name = job["episode_file"].stem
                     print(
-                        f"[{completed}/{len(jobs)}] {status} {job['bot']} instance {job['instance_id']}: {episode_name}"
+                        f"[{completed}/{len(jobs)}] {status} {job['bot']} instance {job['instance_id']}: {episode_name} ({elapsed:.1f}s)"
                     )
                     if not success:
                         failed += 1
@@ -671,11 +695,20 @@ class InstanceManager:
                     failed += 1
                     print(f"[{completed+failed}/{len(jobs)}] ❌ Error: {e}")
 
+        wall_time = time.time() - wall_start
+        encode_pct = (total_encode_time / wall_time * 100 / workers) if wall_time > 0 else 0
+        realtime_x = total_video_duration / wall_time if wall_time > 0 else 0
+
         print(f"\n{'='*60}")
         print(f"Postprocessing Summary:")
         print(f"  Total episodes: {len(jobs)}")
         print(f"  Successful: {completed - failed}")
         print(f"  Failed: {failed}")
+        print(f"  Wall time: {wall_time:.1f}s")
+        print(f"  Cumulative encode time: {total_encode_time:.1f}s")
+        print(f"  Total video encoded: {total_video_duration:.1f}s ({total_video_duration/60:.1f}min)")
+        print(f"  Encode throughput: {realtime_x:.1f}x realtime")
+        print(f"  Encode % of wall time (per worker avg): {encode_pct:.0f}%")
         print(f"{'='*60}")
 
 
@@ -734,6 +767,13 @@ def main():
         help="Enable debug output for postprocess command",
     )
     parser.add_argument(
+        "--encoder",
+        type=str,
+        default="libx264",
+        choices=["libx264", "h264_nvenc"],
+        help="Video encoder for postprocess: libx264 (CPU) or h264_nvenc (NVIDIA GPU) (default: libx264)",
+    )
+    parser.add_argument(
         "--output-dir",
         type=str,
         help="Directory for processed video outputs (default: batch1/aligned)",
@@ -754,7 +794,7 @@ def main():
         manager.logs(args.instance, args.follow, args.tail)
     elif args.command == "postprocess":
         manager.postprocess_recordings(
-            args.workers, args.comparison_video, args.debug, args.output_dir
+            args.workers, args.comparison_video, args.debug, args.output_dir, args.encoder
         )
 
 

@@ -27,9 +27,7 @@ class AlignmentInput:
     camera_meta_path: Path
     output_video_path: Path
     output_metadata_path: Path
-    ffmpeg_path: str  # retained for CLI compatibility, unused internally
-    margin_start: float  # unused but kept for backward compatibility
-    margin_end: float    # unused but kept for backward compatibility
+    encoder: str = "libx264"
 
 
 def _load_actions(path: Path) -> List[Dict[str, Any]]:
@@ -257,19 +255,59 @@ def _match_actions_to_frames(
 # Frame extraction (shared by both modes)
 # ---------------------------------------------------------------------------
 
+def _build_ffmpeg_cmd(
+    width: int,
+    height: int,
+    fps: float,
+    output_path: Path,
+    encoder: str = "libx264",
+    crf: int = 18,
+) -> List[str]:
+    """Build the ffmpeg command for the chosen encoder."""
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo",
+        "-pix_fmt", "bgr24",
+        "-s", f"{width}x{height}",
+        "-r", str(fps),
+        "-i", "pipe:0",
+    ]
+
+    if encoder == "h264_nvenc":
+        cmd += [
+            "-c:v", "h264_nvenc",
+            "-cq", str(crf),
+            "-preset", "p5",
+        ]
+    else:
+        cmd += [
+            "-c:v", "libx264",
+            "-profile:v", "high",
+            "-crf", str(crf),
+            "-preset", "veryfast",
+        ]
+
+    cmd += [
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+    return cmd
+
+
 def _write_frames_by_index(
     recording_path: Path,
     frame_indices: List[int],
     fps: float,
     output_path: Path,
+    encoder: str = "libx264",
     crf: int = 18,
 ) -> None:
     """Extract selected frames and encode to H.264 via piped FFmpeg.
 
     Frames are decoded with OpenCV (which handles seeking / duplicate-index
     caching) and piped as raw BGR24 to an ``ffmpeg`` subprocess that encodes
-    with libx264.  This replaces the old cv2.VideoWriter/mp4v path and
-    produces smaller, higher-quality H.264 output with CRF-based rate control.
+    with libx264 or h264_nvenc.
     """
     start_time = time.time()
 
@@ -286,21 +324,7 @@ def _write_frames_by_index(
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    ffmpeg_cmd = [
-        "ffmpeg", "-y",
-        "-f", "rawvideo",
-        "-pix_fmt", "bgr24",
-        "-s", f"{width}x{height}",
-        "-r", str(fps),
-        "-i", "pipe:0",
-        "-c:v", "libx264",
-        "-profile:v", "high",
-        "-crf", str(crf),
-        "-preset", "fast",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        str(output_path),
-    ]
+    ffmpeg_cmd = _build_ffmpeg_cmd(width, height, fps, output_path, encoder, crf)
     ffmpeg_proc = subprocess.Popen(
         ffmpeg_cmd,
         stdin=subprocess.PIPE,
@@ -343,7 +367,11 @@ def _write_frames_by_index(
                 last_frame = frame.copy()
     finally:
         cap.release()
-        ffmpeg_proc.stdin.close()
+        try:
+            ffmpeg_proc.stdin.close()
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+        ffmpeg_proc.stdin = None  # prevent communicate() from flushing closed stdin (Python 3.10)
         _, stderr_bytes = ffmpeg_proc.communicate(timeout=120)
 
     if ffmpeg_proc.returncode != 0:
@@ -353,8 +381,10 @@ def _write_frames_by_index(
         )
 
     total_time = time.time() - start_time
+    video_duration = len(frame_indices) / fps
     print(f"[align] Extracted {len(frame_indices)} frames in {total_time:.1f}s "
           f"(seeks={seeks_count}, cache_hits={cache_hits})")
+    print(f"[align:video_duration_sec] {video_duration:.2f}")
 
 
 # ---------------------------------------------------------------------------
@@ -469,7 +499,7 @@ def align_recording(config: AlignmentInput) -> Dict[str, Any]:
     # Trim actions to only those that were matched
     matched_actions = actions[: len(frame_indices)]
 
-    _write_frames_by_index(recording_path, frame_indices, fps, config.output_video_path)
+    _write_frames_by_index(recording_path, frame_indices, fps, config.output_video_path, encoder=config.encoder)
 
     action_times_sec = [float(a["epochTime"]) for a in matched_actions]
     mapping = _build_action_mapping_wallclock(
@@ -556,6 +586,13 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         default=None,
         help="Process single episode file (overrides directory processing)",
     )
+    parser.add_argument(
+        "--encoder",
+        type=str,
+        default="libx264",
+        choices=["libx264", "h264_nvenc"],
+        help="Video encoder: libx264 (CPU) or h264_nvenc (NVIDIA GPU) (default: libx264)",
+    )
     return parser.parse_args(list(argv))
 
 
@@ -622,6 +659,7 @@ def ensure_metadata(meta_path: Path) -> None:
 def process_actions(
     actions_dir: Path,
     configs: Dict[str, BotConfig],
+    encoder: str = "libx264",
 ) -> int:
     actions_processed = 0
     for actions_path in sorted(actions_dir.glob("*.json")):
@@ -642,9 +680,7 @@ def process_actions(
             camera_meta_path=config.camera_meta,
             output_video_path=output_video,
             output_metadata_path=output_meta,
-            ffmpeg_path="ffmpeg",
-            margin_start=0.0,
-            margin_end=0.0,
+            encoder=encoder,
         )
 
         align_start = time.time()
@@ -670,6 +706,7 @@ def process_actions(
 def process_single_episode(
     episode_path: Path,
     configs: Dict[str, BotConfig],
+    encoder: str = "libx264",
 ) -> bool:
     """Process a single episode file. Returns True if successful."""
     if episode_path.name.endswith("_meta.json"):
@@ -691,9 +728,7 @@ def process_single_episode(
             camera_meta_path=config.camera_meta,
             output_video_path=output_video,
             output_metadata_path=output_meta,
-            ffmpeg_path="ffmpeg",
-            margin_start=0.0,
-            margin_end=0.0,
+            encoder=encoder,
         )
 
         align_start = time.time()
@@ -723,6 +758,8 @@ def main(argv: Iterable[str]) -> int:
         output_base=args.output_dir.resolve() if args.output_dir else None,
     )
 
+    encoder = args.encoder
+
     # Single-episode fast path if provided by orchestrator
     if args.episode_file:
         episode_path = args.episode_file.resolve()
@@ -730,13 +767,13 @@ def main(argv: Iterable[str]) -> int:
             print(f"[align] episode file not found: {episode_path}", file=sys.stderr)
             return 1
         processed = process_single_episode(
-            episode_path, configs
+            episode_path, configs, encoder=encoder
         )
         return 0 if processed else 1
 
     # Otherwise process all episodes under --actions-dir
     processed = process_actions(
-        actions_dir, configs
+        actions_dir, configs, encoder=encoder
     )
     if processed == 0:
         print("[align] no action traces found; nothing to do")
