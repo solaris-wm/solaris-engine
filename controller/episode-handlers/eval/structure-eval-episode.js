@@ -32,6 +32,7 @@ const getBuilderAdmireTicks = (blockCount) => {
   return 4; // Default: 1.0 seconds (20 ticks)
 };
 
+const CAMERA_SPEED_DEGREES_PER_SEC = 171.8873;
 const BUILD_BLOCK_TYPES = ["stone"]; // Only stone blocks for building
 const EPISODE_MIN_TICKS = 300;
 const PLACEMENT_STANDOFF_BLOCKS = 1; // Stand 2 blocks away from the structure while placing
@@ -437,7 +438,7 @@ function getOnStructureEvalPhaseFn(
       // Look at the structure together
       if (viewPosition) {
         console.log(`[${bot.username}] 👁️ Looking at structure from front...`);
-        await lookAtSmooth(bot, viewPosition, 90, {
+        await lookAtSmooth(bot, viewPosition, CAMERA_SPEED_DEGREES_PER_SEC, {
           randomized: false,
           useEasing: false,
         });
