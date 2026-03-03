@@ -767,6 +767,13 @@ def main():
         gpu_id = i % gpu_count
         print(f"    Instance {i}: GPU {gpu_id}")
 
+    if total_instances > 4:
+        raise ValueError(
+            f"total_instances={total_instances} exceeds the NVENC limit of 8 "
+            f"simultaneous encoding sessions per GPU. "
+            f"Please reduce the number of total instances to 4 or fewer."
+        )
+
     print(f"Generating {total_instances} Docker Compose configurations...")
 
     for i in range(total_instances):
