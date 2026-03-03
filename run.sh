@@ -60,6 +60,14 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
+TOTAL_INSTANCES=$((NUM_FLAT_WORLD + NUM_NORMAL_WORLD))
+if [[ $TOTAL_INSTANCES -gt 4 ]]; then
+  echo "Error: total instances ($TOTAL_INSTANCES) exceeds the NVENC limit of 8 simultaneous encoding sessions per GPU." >&2
+  echo "  NUM_FLAT_WORLD=$NUM_FLAT_WORLD + NUM_NORMAL_WORLD=$NUM_NORMAL_WORLD = $TOTAL_INSTANCES" >&2
+  echo "  Please reduce the number of total instances to 4 or fewer." >&2
+  exit 1
+fi
+
 BASE_DATA_COLLECTION_DIR=$BASE_DATA_DIR/data_collection/train
 for ((i=0; i<NUM_BATCHES; i++)); do
     BATCH_NAME="batch_$i"
