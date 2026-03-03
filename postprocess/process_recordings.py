@@ -4,17 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-import time
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Iterable, Optional, Tuple
-
-import cv2
-import numpy as np
-
-import argparse
-import json
 import subprocess
 import sys
 import time
@@ -273,13 +262,17 @@ def _write_frames_by_index(
     frame_indices: List[int],
     fps: float,
     output_path: Path,
+    crf: int = 18,
 ) -> None:
-    """Extract frames from camera recording by seeking to each frame index.
-    
-    This handles duplicate frame indices (multiple actions per frame) correctly.
+    """Extract selected frames and encode to H.264 via piped FFmpeg.
+
+    Frames are decoded with OpenCV (which handles seeking / duplicate-index
+    caching) and piped as raw BGR24 to an ``ffmpeg`` subprocess that encodes
+    with libx264.  This replaces the old cv2.VideoWriter/mp4v path and
+    produces smaller, higher-quality H.264 output with CRF-based rate control.
     """
     start_time = time.time()
-    
+
     if not frame_indices:
         raise ValueError("No frames requested for alignment")
 
@@ -290,58 +283,78 @@ def _write_frames_by_index(
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    writer = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
-    
-    setup_time = time.time() - start_time
-    read_start = time.time()
 
-    # Read and write frames, caching the last frame to handle duplicates efficiently
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    ffmpeg_cmd = [
+        "ffmpeg", "-y",
+        "-f", "rawvideo",
+        "-pix_fmt", "bgr24",
+        "-s", f"{width}x{height}",
+        "-r", str(fps),
+        "-i", "pipe:0",
+        "-c:v", "libx264",
+        "-profile:v", "high",
+        "-crf", str(crf),
+        "-preset", "fast",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        str(output_path),
+    ]
+    ffmpeg_proc = subprocess.Popen(
+        ffmpeg_cmd,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    assert ffmpeg_proc.stdin is not None
+
     last_frame_idx = -1
     last_frame = None
     seeks_count = 0
     reads_count = 0
     cache_hits = 0
-    
-    for i, frame_idx in enumerate(frame_indices):
-        if frame_idx < 0 or frame_idx >= total_frames:
-            cap.release()
-            writer.release()
-            raise RuntimeError(
-                f"Action {i} maps to frame {frame_idx}, but camera only has {total_frames} frames"
-            )
-        
-        # Reuse cached frame if it's a duplicate
-        if frame_idx == last_frame_idx and last_frame is not None:
-            writer.write(last_frame)
-            cache_hits += 1
-        else:
-            # Only seek if we need to go backwards or skip frames
-            # For sequential reads, just continue reading
-            if frame_idx != last_frame_idx + 1:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                seeks_count += 1
-            
-            ret, frame = cap.read()
-            reads_count += 1
-            
-            if not ret:
-                cap.release()
-                writer.release()
+
+    try:
+        for i, frame_idx in enumerate(frame_indices):
+            if frame_idx < 0 or frame_idx >= total_frames:
                 raise RuntimeError(
-                    f"Failed to read frame {frame_idx} from camera recording"
+                    f"Action {i} maps to frame {frame_idx}, but camera only has {total_frames} frames"
                 )
-            
-            writer.write(frame)
-            last_frame_idx = frame_idx
-            last_frame = frame.copy()  # Cache for potential duplicates
-    
-    writer.release()
-    cap.release()
-    
+
+            if frame_idx == last_frame_idx and last_frame is not None:
+                ffmpeg_proc.stdin.write(last_frame.tobytes())
+                cache_hits += 1
+            else:
+                if frame_idx != last_frame_idx + 1:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                    seeks_count += 1
+
+                ret, frame = cap.read()
+                reads_count += 1
+
+                if not ret:
+                    raise RuntimeError(
+                        f"Failed to read frame {frame_idx} from camera recording"
+                    )
+
+                ffmpeg_proc.stdin.write(frame.tobytes())
+                last_frame_idx = frame_idx
+                last_frame = frame.copy()
+    finally:
+        cap.release()
+        ffmpeg_proc.stdin.close()
+        _, stderr_bytes = ffmpeg_proc.communicate(timeout=120)
+
+    if ffmpeg_proc.returncode != 0:
+        stderr_text = stderr_bytes.decode("utf-8", errors="replace")[-2000:]
+        raise RuntimeError(
+            f"FFmpeg encoding failed (rc={ffmpeg_proc.returncode}):\n{stderr_text}"
+        )
+
     total_time = time.time() - start_time
-    print(f"[align] Extracted {len(frame_indices)} frames in {total_time:.1f}s")
+    print(f"[align] Extracted {len(frame_indices)} frames in {total_time:.1f}s "
+          f"(seeks={seeks_count}, cache_hits={cache_hits})")
 
 
 # ---------------------------------------------------------------------------
