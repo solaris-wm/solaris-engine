@@ -761,6 +761,8 @@ def main():
     # GPU configuration summary
     print(f"GPU rendering enabled: {gpu_count} GPUs available, mode={args.gpu_mode}")
     print(f"  Instances will be distributed round-robin across GPUs")
+    print(f"  ! Due to a known NVIDIA driver bug, only GPU 0 can be used for now. See Docs->Known Issue(s) for details")
+    print(f"  ! https://solaris-wm.github.io/solaris-engine/getting_started.html#known-issue-s")
     for i in range(total_instances):
         gpu_id = i % gpu_count
         print(f"    Instance {i}: GPU {gpu_id}")
