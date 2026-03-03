@@ -1,7 +1,7 @@
 const { lookAtSmooth, sneak } = require("../../primitives/movement");
 const { BaseEpisode } = require("../base-episode");
 
-const CAMERA_SPEED_DEGREES_PER_SEC = 30;
+const CAMERA_SPEED_DEGREES_PER_SEC = 171.8873;
 const EPISODE_MIN_TICKS = 300;
 
 function getOnTurnToLookOppositePhaseFn(
