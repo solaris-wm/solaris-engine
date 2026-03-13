@@ -774,6 +774,21 @@ def main():
             f"Please reduce the number of total instances to 4 or fewer."
         )
 
+    # Validate that all skin PNGs have pre-cached .customskin files
+    skins_dir = Path(project_root) / "server" / "skins"
+    if skins_dir.is_dir():
+        missing = [
+            p.name for p in sorted(skins_dir.glob("*.png"))
+            if not p.with_suffix(p.suffix + ".customskin").exists()
+        ]
+        if missing:
+            raise FileNotFoundError(
+                f"Missing .customskin cache files for: {', '.join(missing)}. "
+                f"Run: python3 regenerate_skin_cache.py {skins_dir}"
+            )
+    else:
+        raise FileNotFoundError(f"Skins directory not found: {skins_dir}")
+
     print(f"Generating {total_instances} Docker Compose configurations...")
 
     for i in range(total_instances):

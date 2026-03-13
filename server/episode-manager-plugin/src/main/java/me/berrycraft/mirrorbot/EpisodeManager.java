@@ -113,6 +113,11 @@ public class EpisodeManager extends JavaPlugin implements Listener {
             return;
         }
 
+        if (!skinManager.preloadSkinCache(availableSkins)) {
+            starter.sendMessage(ChatColor.RED + "Some skins are missing .customskin cache files. Check server log for details.");
+            return;
+        }
+
         Map<String, String> pairMap = new LinkedHashMap<>();
         List<StartConfig> configs = new ArrayList<>();
 
@@ -201,7 +206,6 @@ public class EpisodeManager extends JavaPlugin implements Listener {
         }
 
         resetAllVisibility();
-        skinManager.resetAllSkins();
 
         controllerToCamera.clear();
         activePairs.clear();
