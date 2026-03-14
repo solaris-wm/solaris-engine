@@ -6,16 +6,19 @@ import org.bukkit.entity.Player;
 import net.skinsrestorer.api.SkinsRestorer;
 import net.skinsrestorer.api.SkinsRestorerProvider;
 import net.skinsrestorer.api.exception.DataRequestException;
-import net.skinsrestorer.api.exception.MineSkinException;
 import net.skinsrestorer.api.property.InputDataResult;
 import net.skinsrestorer.api.property.SkinIdentifier;
-import net.skinsrestorer.api.property.SkinVariant;
+import net.skinsrestorer.api.property.SkinProperty;
 import net.skinsrestorer.api.storage.PlayerStorage;
 import net.skinsrestorer.api.storage.SkinStorage;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
 import java.util.*;
+
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 
 public class SkinManager {
 
@@ -68,6 +71,61 @@ public class SkinManager {
         return map;
     }
 
+    /**
+     * Pre-populates SkinsRestorer's SkinStorage from .customskin cache files.
+     * Each .png in the skins directory must have a corresponding .png.customskin file
+     * containing pre-signed Mojang texture data.
+     *
+     * @param skins the map returned by {@link #loadSkins()}
+     * @return true if all skins were pre-cached successfully, false if any are missing
+     */
+    public boolean preloadSkinCache(Map<String, File> skins) {
+        if (skinsRestorer == null) {
+            plugin.getLogger().warning("[SkinManager] SkinsRestorer unavailable; cannot preload skin cache.");
+            return false;
+        }
+
+        SkinStorage storage = skinsRestorer.getSkinStorage();
+        if (storage == null) {
+            plugin.getLogger().severe("[SkinManager] SkinStorage is null; cannot preload skin cache.");
+            return false;
+        }
+
+        boolean allOk = true;
+        for (Map.Entry<String, File> entry : skins.entrySet()) {
+            File pngFile = entry.getValue();
+            File cacheFile = new File(pngFile.getAbsolutePath() + ".customskin");
+
+            if (!cacheFile.exists()) {
+                plugin.getLogger().severe("[SkinManager] Missing .customskin cache for " + pngFile.getName()
+                        + ". Run regenerate_skin_cache.py on the host to create it.");
+                allOk = false;
+                continue;
+            }
+
+            try {
+                String json = Files.readString(cacheFile.toPath());
+                JsonObject obj = JsonParser.parseString(json).getAsJsonObject();
+                String value = obj.get("value").getAsString();
+                String signature = obj.get("signature").getAsString();
+
+                String key = "file:" + pngFile.getName().toLowerCase(Locale.ROOT);
+                SkinProperty property = SkinProperty.of(value, signature);
+                storage.setCustomSkinData(key, property);
+
+                plugin.getLogger().info("[SkinManager] Pre-cached skin: " + key + " from " + cacheFile.getName());
+            } catch (IOException e) {
+                plugin.getLogger().severe("[SkinManager] Failed to read cache file " + cacheFile.getName() + ": " + e.getMessage());
+                allOk = false;
+            } catch (Exception e) {
+                plugin.getLogger().severe("[SkinManager] Failed to parse cache file " + cacheFile.getName() + ": " + e.getMessage());
+                allOk = false;
+            }
+        }
+
+        return allOk;
+    }
+
     public File resolveSkin(String key, Map<String, File> skins) {
         return skins.get(normalizeName(key));
     }
@@ -102,26 +160,21 @@ public class SkinManager {
             try {
                 SkinStorage storage = skinsRestorer.getSkinStorage();
                 if (storage == null) {
-                    plugin.getLogger().severe("[SkinManager] SkinStorage is null; cannot cache/apply skin.");
+                    plugin.getLogger().severe("[SkinManager] SkinStorage is null; cannot apply skin.");
                     return;
                 }
 
                 String key = "file:" + file.getName().toLowerCase(Locale.ROOT);
 
                 Optional<InputDataResult> cached = storage.findSkinData(key);
-                SkinIdentifier id;
-
-                if (cached.isPresent()) {
-                    plugin.getLogger().info("[SkinManager] Using cached skin for key " + key);
-                    id = cached.get().getIdentifier();
-                } else {
-                    plugin.getLogger().info("[SkinManager] Generating skin for key " + key + " from file " + file.getAbsolutePath());
-                    var api = skinsRestorer.getMineSkinAPI();
-                    var response = api.genSkin(file.toPath(), SkinVariant.CLASSIC);
-
-                    storage.setCustomSkinData(key, response.getProperty());
-                    id = storage.findSkinData(key).orElseThrow().getIdentifier();
+                if (cached.isEmpty()) {
+                    plugin.getLogger().severe("[SkinManager] No pre-cached skin data for key " + key
+                            + ". Ensure .customskin files are present in the skins directory.");
+                    return;
                 }
+
+                plugin.getLogger().info("[SkinManager] Using pre-cached skin for key " + key);
+                SkinIdentifier id = cached.get().getIdentifier();
 
                 PlayerStorage ps = skinsRestorer.getPlayerStorage();
                 ps.setSkinIdOfPlayer(controller.getUniqueId(), id);
@@ -136,31 +189,9 @@ public class SkinManager {
                     }
                 });
 
-            } catch (DataRequestException | MineSkinException | IOException ex) {
+            } catch (Exception ex) {
                 plugin.getLogger().severe("[SkinManager] Failed to apply skin " + file.getName() + ": " + ex.getMessage());
                 ex.printStackTrace();
-            }
-        });
-    }
-
-    public void resetAllSkins() {
-        if (skinsRestorer == null) return;
-
-        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
-            for (Player p : Bukkit.getOnlinePlayers()) {
-                try {
-                    skinsRestorer.getPlayerStorage().removeSkinIdOfPlayer(p.getUniqueId());
-
-                    Bukkit.getScheduler().runTask(plugin, () -> {
-                        try {
-                            skinsRestorer.getSkinApplier(Player.class).applySkin(p);
-                        } catch (DataRequestException e) {
-                            e.printStackTrace();
-                        }
-                    });
-
-                } catch (Exception ignored) {
-                }
             }
         });
     }
