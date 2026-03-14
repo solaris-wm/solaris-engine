@@ -4,7 +4,7 @@ const {
   lookSmooth,
 } = require("../../primitives/movement");
 const { BaseEpisode } = require("../base-episode");
-const THIS_CAMERA_SPEED_DEGREES_PER_SEC = 30;
+const THIS_CAMERA_SPEED_DEGREES_PER_SEC = 171.8873;
 const EPISODE_MIN_TICKS = 300;
 
 function getOnRotatePhaseFn(
@@ -25,7 +25,7 @@ function getOnRotatePhaseFn(
     );
 
     // Look at the other bot smoothly at the start of the phase
-    await lookAtSmooth(bot, otherBotPosition, 120, {
+    await lookAtSmooth(bot, otherBotPosition, THIS_CAMERA_SPEED_DEGREES_PER_SEC, {
       randomized: false,
       useEasing: false,
     });
