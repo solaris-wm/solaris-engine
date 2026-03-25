@@ -121,6 +121,8 @@ def generate_compose_config(
     eval_time_set_day: int = 0,
     # Flatland options
     flatland_world_disable_structures: bool = False,
+    # Advancement options
+    disable_advancements: bool = False,
 ):
     """Generate a Docker Compose configuration for a single instance."""
 
@@ -176,13 +178,23 @@ def generate_compose_config(
                     'if [ -d /source_skins ] && [ -n "$(ls -A /source_skins 2>/dev/null)" ]; then '
                     "  cp -r /source_skins/. /data/skins/; "
                     "fi; "
-                    "chmod -R 777 /data/plugins /data/skins",
+                    + (
+                        "cp /source_config/spigot.yml /data/spigot.yml; "
+                        if disable_advancements
+                        else ""
+                    )
+                    + "chmod -R 777 /data/plugins /data/skins",
                 ],
                 "volumes": [
                     f"{data_dir}:/data",
                     f"{project_root}/server/plugins:/source_plugins:ro",
                     f"{project_root}/server/skins:/source_skins:ro",
-                ],
+                ]
+                + (
+                    [f"{project_root}/server/config:/source_config:ro"]
+                    if disable_advancements
+                    else []
+                ),
                 "restart": "no",
             },
             f"mc_instance_{instance_id}": {
@@ -717,6 +729,13 @@ def main():
         choices=["egl", "x11", "auto"],
         help="GPU rendering mode: egl (headless), x11 (requires host X), auto (default: egl)",
     )
+    parser.add_argument(
+        "--disable_advancements",
+        type=str,
+        default="false",
+        choices=["true", "false"],
+        help="Disable all Minecraft advancements via spigot.yml (default: false)",
+    )
 
     args = parser.parse_args()
     # Ensure required dirs are absolute
@@ -845,6 +864,8 @@ def main():
             flatland_world_disable_structures=bool(
                 args.flatland_world_disable_structures
             ),
+            # Advancement options
+            disable_advancements=(args.disable_advancements == "true"),
         )
 
         # Write compose file

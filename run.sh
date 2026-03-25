@@ -8,6 +8,7 @@ NUM_NORMAL_WORLD=1
 NUM_EPISODES=2
 DATASET_NAME="duet"
 FILTER_WATER_EPISODES=true
+DISABLE_ADVANCEMENTS=true
 
 # Parse CLI args
 while [[ $# -gt 0 ]]; do
@@ -40,6 +41,10 @@ while [[ $# -gt 0 ]]; do
       FILTER_WATER_EPISODES="$2"
       shift 2
       ;;
+    --disable-advancements)
+      DISABLE_ADVANCEMENTS="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
       echo "  --output-dir DIR       Base data directory (default: output)"
@@ -49,6 +54,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --num-episodes N       Number of episodes (default: 2)"
       echo "  --dataset-name NAME    Dataset name (default: duet)"
       echo "  --filter-water-episodes true|false  Filter water episodes (default: true)"
+      echo "  --disable-advancements true|false   Disable advancement pop-ups (default: true)"
       echo "  -h, --help             Show this help"
       exit 0
       ;;
@@ -92,7 +98,8 @@ for ((i=0; i<NUM_BATCHES; i++)); do
         --num_episodes $NUM_EPISODES \
         --eval_time_set_day 0 \
         --viewer_rendering_disabled 1 \
-        --gpu_mode egl
+        --gpu_mode egl \
+        --disable_advancements "$DISABLE_ADVANCEMENTS"
 
     python3 orchestrate.py start --build --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs"
     python3 orchestrate.py status --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs"
