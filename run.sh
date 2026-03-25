@@ -8,6 +8,7 @@ NUM_NORMAL_WORLD=1
 NUM_EPISODES=2
 DATASET_NAME="duet"
 FILTER_WATER_EPISODES=true
+# Disable Advancements tracking and popups via spigot.yml
 DISABLE_ADVANCEMENTS=true
 
 # Parse CLI args
