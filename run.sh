@@ -8,7 +8,7 @@ NUM_NORMAL_WORLD=1
 NUM_EPISODES=2
 DATASET_NAME="duet"
 FILTER_WATER_EPISODES=true
-POSTPROCESS_ENCODER="h264_nvenc" # libx264 or h264_nvenc
+ENCODER="h264_nvenc" # libx264 or h264_nvenc — used for both camera recording and postprocess
 POSTPROCESS_WORKERS=8
 
 # Parse CLI args
@@ -43,7 +43,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --encoder)
-      POSTPROCESS_ENCODER="$2"
+      ENCODER="$2"
       shift 2
       ;;
     --postprocess-workers)
@@ -59,7 +59,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --num-episodes N       Number of episodes (default: 2)"
       echo "  --dataset-name NAME    Dataset name (default: duet)"
       echo "  --filter-water-episodes true|false  Filter water episodes (default: true)"
-      echo "  --encoder ENCODER      Postprocess encoder: libx264 or h264_nvenc (default: libx264)"
+      echo "  --encoder ENCODER      Video encoder for camera recording AND postprocess: libx264 or h264_nvenc (default: h264_nvenc)"
       echo "  --postprocess-workers N  Parallel postprocess workers (default: 8, max 8 for h264_nvenc)"
       echo "  -h, --help             Show this help"
       exit 0
@@ -80,7 +80,7 @@ if [[ $TOTAL_INSTANCES -gt 4 ]]; then
   exit 1
 fi
 
-if [[ "$POSTPROCESS_ENCODER" == "h264_nvenc" ]] && [[ "$POSTPROCESS_WORKERS" -gt 8 ]]; then
+if [[ "$ENCODER" == "h264_nvenc" ]] && [[ "$POSTPROCESS_WORKERS" -gt 8 ]]; then
   echo "Warning: h264_nvenc supports at most 8 concurrent sessions; capping --postprocess-workers from $POSTPROCESS_WORKERS to 8" >&2
   POSTPROCESS_WORKERS=8
 fi
@@ -109,7 +109,8 @@ for ((i=0; i<NUM_BATCHES; i++)); do
         --num_episodes $NUM_EPISODES \
         --eval_time_set_day 0 \
         --viewer_rendering_disabled 1 \
-        --gpu_mode egl
+        --gpu_mode egl \
+        --camera_encoder "$ENCODER"
 
     python3 orchestrate.py start --build --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs"
     python3 orchestrate.py status --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs"
@@ -117,7 +118,7 @@ for ((i=0; i<NUM_BATCHES; i++)); do
     python3 orchestrate.py stop --compose-dir "$COMPOSE_DIR"
     # Fix Docker root-owned file permissions so re-runs and postprocessing work
     docker run --rm -v "$(pwd)/$BATCH_DIR:/workspace" alpine chown -R "$(id -u):$(id -g)" /workspace
-    python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers "$POSTPROCESS_WORKERS" --encoder "$POSTPROCESS_ENCODER" --output-dir "$BATCH_DIR/aligned"
+    python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers "$POSTPROCESS_WORKERS" --encoder "$ENCODER" --output-dir "$BATCH_DIR/aligned"
 done
 
 if [[ "$FILTER_WATER_EPISODES" == "true" ]]; then

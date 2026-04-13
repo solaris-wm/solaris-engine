@@ -173,21 +173,37 @@ EOF
   #                                            in the container (simplifies ffprobe
   #                                            extraction at postprocessing time).
 
-  if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_nvenc; then
-    echo "[client] Using NVENC hardware encoding (MKV) with wallclock timestamps"
-    ffmpeg -hide_banner -loglevel info -y \
-      -use_wallclock_as_timestamps 1 \
-      -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
-      -copyts -vsync 0 \
-      -c:v h264_nvenc -preset p4 -rc:v vbr -b:v 0 -bf 0 -cq 17 -pix_fmt yuv420p "$RECORDING_PATH" &
-  else
-    echo "[client] Using CPU encoding (libx264, MKV) with wallclock timestamps"
-    ffmpeg -hide_banner -loglevel info -y \
-      -use_wallclock_as_timestamps 1 \
-      -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
-      -copyts -vsync 0 \
-      -codec:v libx264 -preset veryfast -bf 0 -crf 17 -pix_fmt yuv420p "$RECORDING_PATH" &
+  # If CAMERA_ENCODER is unset, auto-detect based on what this ffmpeg build supports.
+  if [ -z "${CAMERA_ENCODER:-}" ]; then
+    if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_nvenc; then
+      CAMERA_ENCODER="h264_nvenc"
+    else
+      CAMERA_ENCODER="libx264"
+    fi
   fi
+
+  case "$CAMERA_ENCODER" in
+    h264_nvenc)
+      echo "[client] Using NVENC hardware encoding (MKV) with wallclock timestamps"
+      ffmpeg -hide_banner -loglevel info -y \
+        -use_wallclock_as_timestamps 1 \
+        -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
+        -copyts -vsync 0 \
+        -c:v h264_nvenc -preset p4 -rc:v vbr -b:v 0 -bf 0 -cq 17 -pix_fmt yuv420p "$RECORDING_PATH" &
+      ;;
+    libx264)
+      echo "[client] Using CPU encoding (libx264, MKV) with wallclock timestamps"
+      ffmpeg -hide_banner -loglevel info -y \
+        -use_wallclock_as_timestamps 1 \
+        -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
+        -copyts -vsync 0 \
+        -codec:v libx264 -preset veryfast -bf 0 -crf 17 -pix_fmt yuv420p "$RECORDING_PATH" &
+      ;;
+    *)
+      echo "[client] ERROR: unknown CAMERA_ENCODER='$CAMERA_ENCODER' (expected h264_nvenc or libx264)" >&2
+      exit 1
+      ;;
+  esac
   FFMPEG_PID=$!
   PIDS="$PIDS $FFMPEG_PID"
 else

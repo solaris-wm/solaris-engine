@@ -121,6 +121,8 @@ def generate_compose_config(
     eval_time_set_day: int = 0,
     # Flatland options
     flatland_world_disable_structures: bool = False,
+    # Camera encoder ("h264_nvenc" or "libx264"); None = auto-detect in container
+    camera_encoder: Optional[str] = None,
 ):
     """Generate a Docker Compose configuration for a single instance."""
 
@@ -150,6 +152,10 @@ def generate_compose_config(
     )
 
     project_root = str(Path(__file__).resolve().parent)
+
+    camera_env_overrides = (
+        {"CAMERA_ENCODER": camera_encoder} if camera_encoder else {}
+    )
 
     plugin_starter_package_json_host = os.path.join(project_root, "server", "plugin-starter", "package.json")
     # If the only episode type is turnToLookEval, use the fixed seed "solaris"
@@ -389,6 +395,7 @@ def generate_compose_config(
                     "MC_VERSION": "1.21",
                     "MC_HOST": "127.0.0.1",
                     "MC_PORT": mc_port,
+                    **camera_env_overrides,
                     "CAMERA_NAME": "CameraAlpha",
                     "DISPLAY": cam_ports["alpha_display"],
                     "VNC_PORT": str(cam_ports["alpha_vnc"]),
@@ -462,6 +469,7 @@ def generate_compose_config(
                     "MC_VERSION": "1.21",
                     "MC_HOST": "127.0.0.1",
                     "MC_PORT": mc_port,
+                    **camera_env_overrides,
                     "CAMERA_NAME": "CameraBravo",
                     "DISPLAY": cam_ports["bravo_display"],
                     "VNC_PORT": str(cam_ports["bravo_vnc"]),
@@ -717,6 +725,14 @@ def main():
         choices=["egl", "x11", "auto"],
         help="GPU rendering mode: egl (headless), x11 (requires host X), auto (default: egl)",
     )
+    parser.add_argument(
+        "--camera_encoder",
+        type=str,
+        default=None,
+        choices=["libx264", "h264_nvenc"],
+        help="Video encoder for camera recording: libx264 (CPU) or h264_nvenc (NVIDIA GPU). "
+             "If unset, the container auto-detects based on ffmpeg capabilities.",
+    )
 
     args = parser.parse_args()
     # Ensure required dirs are absolute
@@ -845,6 +861,7 @@ def main():
             flatland_world_disable_structures=bool(
                 args.flatland_world_disable_structures
             ),
+            camera_encoder=args.camera_encoder,
         )
 
         # Write compose file

@@ -112,7 +112,7 @@ Camera
 
 The Camera Bot is the official Minecraft Java Client that runs headlessly on an ``Xvfb`` virtual display. We enable GPU-accelerated graphics via ``vglrun -d "egl"``. It connects to the server and pairs up with the corresponding Controller Bot of that player, 
 so that these two processes are logically a single player. Through the :ref:`Minecraft Server Plugin <minecraft-server-plugin>`, the camera bot, at all times, shares the first person perspective of its controller bot. 
-The Camera Bot captures graphics using ``ffmpeg`` with the ``-f x11grab`` option, which grabs the X11 virtual display. We enable NVENC hardware encoding via ``-c:v h264_nvenc``. ``SolarisEngine`` aligns the video and actions together in postprocessing to form a final episode. Both the controller (actions) and camera (video) bots record at ``20`` FPS. We save videos at ``1280×720``, though this is flexible.
+The Camera Bot captures graphics using ``ffmpeg`` with the ``-f x11grab`` option, which grabs the X11 virtual display. The H.264 encoder is selectable via the ``CAMERA_ENCODER`` environment variable (``h264_nvenc`` for NVIDIA GPU or ``libx264`` for CPU); if unset, the container auto-detects based on ffmpeg build support. The same choice governs the postprocess step via ``orchestrate.py postprocess --encoder``. ``SolarisEngine`` aligns the video and actions together in postprocessing to form a final episode. Both the controller (actions) and camera (video) bots record at ``20`` FPS. We save videos at ``1280×720``, though this is flexible.
 
 .. _minecraft-server-plugin:
 
