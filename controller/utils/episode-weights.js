@@ -6,7 +6,7 @@ const episodeTypicalLengths = {
   orbit: 60,
   walkLook: 60,
   walkLookAway: 60,
-  pvp: 12.5,
+  pvp: 15,
   pve: 60,
   buildStructure: 15,
   buildTower: 12,
