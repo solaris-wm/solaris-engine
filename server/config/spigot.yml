@@ -1,3 +1,21 @@
+# ----------------------------------------------------------------------------
+# solaris-engine customization notice
+# ----------------------------------------------------------------------------
+# This file is a verbatim copy of the default spigot.yml that Spigot generates
+# on first server boot, with a SINGLE customization: the `advancements:` block
+# below (see lines ~56-59) disables advancement saving and all advancements,
+# which suppresses the advancement/achievement popups that otherwise block the
+# controller at episode start.
+#
+# It is stored in full (rather than as a diff) because the init container in
+# generate_compose.py copies this file wholesale over /data/spigot.yml when
+# --disable_advancements=true, so it must be a complete, valid Spigot config.
+#
+# Reference for every setting below: https://www.spigotmc.org/wiki/spigot-configuration/
+# If Spigot's upstream defaults change, regenerate this file from a fresh
+# server boot and re-apply the `advancements:` customization.
+# ----------------------------------------------------------------------------
+#
 # This is the main configuration file for Spigot.
 # As you can see, there's tons to configure. Some options may impact gameplay, so use
 # with caution, and make sure you know what each option does before configuring.
@@ -53,10 +71,14 @@ settings:
   log-villager-deaths: true
   log-named-deaths: true
   debug: false
+# >>> solaris-engine customization: the only block that differs from the
+# >>> Spigot default. Disables all advancements so their popups cannot
+# >>> appear at episode start. See header comment at the top of this file.
 advancements:
   disable-saving: true
   disabled:
   - '*'
+# <<< end solaris-engine customization
 world-settings:
   default:
     below-zero-generation-in-existing-chunks: true
