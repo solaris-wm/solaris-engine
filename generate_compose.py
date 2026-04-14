@@ -734,7 +734,7 @@ def main():
         type=str,
         default="false",
         choices=["true", "false"],
-        help="Disable all Minecraft advancements via spigot.yml (default: false)",
+        help="Disable all Minecraft advancements via spigot.yml (default: false). When true, bootstrap_wait_time is overridden to 0 since advancement popups cannot appear.",
     )
 
     args = parser.parse_args()
@@ -820,6 +820,14 @@ def main():
         # Calculate GPU assignment for this instance (round-robin across available GPUs)
         gpu_device_id = i % gpu_count
 
+        # When advancements are disabled server-side, popups cannot appear,
+        # so the bootstrap wait (originally needed to let popups clear) is skipped.
+        effective_bootstrap_wait_time = (
+            0
+            if args.disable_advancements == "true"
+            else args.bootstrap_wait_time
+        )
+
         config = generate_compose_config(
             i,
             args.base_port,
@@ -830,7 +838,7 @@ def main():
             args.output_dir,
             args.num_episodes,
             args.episode_start_id,
-            args.bootstrap_wait_time,
+            effective_bootstrap_wait_time,
             args.episode_category,
             args.episode_types,
             args.smoke_test,

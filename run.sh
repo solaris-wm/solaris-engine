@@ -55,7 +55,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --num-episodes N       Number of episodes (default: 2)"
       echo "  --dataset-name NAME    Dataset name (default: duet)"
       echo "  --filter-water-episodes true|false  Filter water episodes (default: true)"
-      echo "  --disable-advancements true|false   Disable advancement pop-ups (default: true)"
+      echo "  --disable-advancements true|false   Disable advancement pop-ups via spigot.yml (default: true). When true, the controller bootstrap wait is overridden to 0 since popups cannot appear."
       echo "  -h, --help             Show this help"
       exit 0
       ;;
