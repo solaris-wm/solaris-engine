@@ -16,10 +16,12 @@ function getOnRotatePhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       "rotatePhase",
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       "rotatePhase beginning",
     );
@@ -41,17 +43,17 @@ function getOnRotatePhaseFn(
     const rotationDegrees = rotationAngles[caseNum];
 
     const shouldThisBotRotate =
-      (bot.username < args.other_bot_name && alphaShouldRotate) ||
-      (bot.username > args.other_bot_name && bravoShouldRotate);
+      (bot.username < peerName && alphaShouldRotate) ||
+      (bot.username > peerName && bravoShouldRotate);
 
     // Determine which bot name is chosen to rotate
     const botChosen = alphaShouldRotate
-      ? bot.username < args.other_bot_name
+      ? bot.username < peerName
         ? bot.username
-        : args.other_bot_name
-      : bot.username > args.other_bot_name
+        : peerName
+      : bot.username > peerName
         ? bot.username
-        : args.other_bot_name;
+        : peerName;
 
     // Store eval metadata
     episodeInstance._evalMetadata = {
@@ -104,25 +106,19 @@ function getOnRotatePhaseFn(
     }
 
     // Setup stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "rotatePhase end",
+      { location: "rotatePhase end" },
     );
   };
 }
@@ -146,8 +142,9 @@ class RotationEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "rotatePhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnRotatePhaseFn(
         bot,
@@ -158,12 +155,7 @@ class RotationEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "rotatePhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }

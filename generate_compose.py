@@ -20,6 +20,20 @@ from typing import Optional
 import yaml
 
 
+DEFAULT_PLAYERS = [
+    "Alpha", "Bravo", "Charlie", "Delta", "Echo",
+    "Foxtrot", "Golf", "Hotel", "India", "Juliett",
+    "Kilo", "Lima", "Mike", "November", "Oscar",
+    "Papa", "Quebec", "Romeo", "Sierra", "Tango",
+    "Uniform", "Victor", "Whiskey", "Xray", "Yankee", "Zulu",
+]
+DEFAULT_SKINS = {
+    "Alpha": "technoblade.png",
+    "Bravo": "test.png",
+    "Charlie": "charlie.png",
+}
+
+
 def absdir(path: str) -> str:
     """Return an absolute path.
 
@@ -32,37 +46,38 @@ def absdir(path: str) -> str:
 
 def camera_paths(
     instance_id: int,
-    alpha_base: str,
-    bravo_base: str,
-    data_alpha_base: str,
-    data_bravo_base: str,
+    players: list,
+    output_bases: list,
+    data_bases: list,
 ) -> dict:
-    return {
-        "alpha_output_host": os.path.join(alpha_base, str(instance_id)),
-        "bravo_output_host": os.path.join(bravo_base, str(instance_id)),
-        "alpha_data_host": os.path.join(data_alpha_base, str(instance_id)),
-        "bravo_data_host": os.path.join(data_bravo_base, str(instance_id)),
-    }
+    assert len(output_bases) == len(players)
+    assert len(data_bases) == len(players)
+    paths = {}
+    for i, name in enumerate(players):
+        key = name.lower()
+        paths[f"{key}_output_host"] = os.path.join(output_bases[i], str(instance_id))
+        paths[f"{key}_data_host"] = os.path.join(data_bases[i], str(instance_id))
+    return paths
 
 
 def camera_ports(
     instance_id: int,
-    alpha_vnc_base: int,
-    alpha_novnc_base: int,
-    bravo_vnc_base: int,
-    bravo_novnc_base: int,
+    players: list,
+    vnc_bases: list,
+    novnc_bases: list,
     display_base: int,
     vnc_step: int,
     display_step: int,
 ) -> dict:
-    return {
-        "alpha_vnc": alpha_vnc_base + vnc_step * instance_id,
-        "alpha_novnc": alpha_novnc_base + vnc_step * instance_id,
-        "bravo_vnc": bravo_vnc_base + vnc_step * instance_id,
-        "bravo_novnc": bravo_novnc_base + vnc_step * instance_id,
-        "alpha_display": f":{display_base + display_step * instance_id}",
-        "bravo_display": f":{display_base + display_step * instance_id + 1}",
-    }
+    assert len(vnc_bases) == len(players)
+    assert len(novnc_bases) == len(players)
+    ports = {}
+    for i, name in enumerate(players):
+        key = name.lower()
+        ports[f"{key}_vnc"] = vnc_bases[i] + vnc_step * instance_id
+        ports[f"{key}_novnc"] = novnc_bases[i] + vnc_step * instance_id
+        ports[f"{key}_display"] = f":{display_base + display_step * instance_id + i}"
+    return ports
 
 
 def generate_terrain_settings(biome, surface_block):
@@ -98,22 +113,19 @@ def generate_compose_config(
     render_distance,
     simulation_distance,
     graphics_mode,
-    # camera specific
-    camera_output_alpha_base,
-    camera_output_bravo_base,
-    camera_data_alpha_base,
-    camera_data_bravo_base,
-    camera_alpha_vnc_base,
-    camera_alpha_novnc_base,
-    camera_bravo_vnc_base,
-    camera_bravo_novnc_base,
+    # per-player
+    players,
+    skins,
+    camera_output_bases,
+    camera_data_bases,
+    camera_vnc_bases,
+    camera_novnc_bases,
     display_base,
     vnc_step,
     display_step,
     # CPU pinning
     cpuset: Optional[str] = None,
-    cpuset_camera_alpha: Optional[str] = None,
-    cpuset_camera_bravo: Optional[str] = None,
+    cpusets_camera: Optional[list] = None,
     # GPU settings
     gpu_device_id: Optional[int] = None,
     gpu_mode: str = "egl",
@@ -121,6 +133,10 @@ def generate_compose_config(
     eval_time_set_day: int = 0,
     # Flatland options
     flatland_world_disable_structures: bool = False,
+    # Advancement options
+    disable_advancements: bool = False,
+    # Camera encoder ("h264_nvenc" or "libx264"); None = auto-detect in container
+    camera_encoder: Optional[str] = None,
 ):
     """Generate a Docker Compose configuration for a single instance."""
 
@@ -130,20 +146,21 @@ def generate_compose_config(
 
     # Directories - each instance gets its own data subdirectory
     data_dir = f"{data_dir_base}/{instance_id}"
+    camera_env_overrides = (
+        {"CAMERA_ENCODER": camera_encoder} if camera_encoder else {}
+    )
 
     cam_paths = camera_paths(
         instance_id,
-        camera_output_alpha_base,
-        camera_output_bravo_base,
-        camera_data_alpha_base,
-        camera_data_bravo_base,
+        players,
+        camera_output_bases,
+        camera_data_bases,
     )
     cam_ports = camera_ports(
         instance_id,
-        camera_alpha_vnc_base,
-        camera_alpha_novnc_base,
-        camera_bravo_vnc_base,
-        camera_bravo_novnc_base,
+        players,
+        camera_vnc_bases,
+        camera_novnc_bases,
         display_base,
         vnc_step,
         display_step,
@@ -160,383 +177,286 @@ def generate_compose_config(
         )
     else:
         seed = str(instance_id) + str(int(time.time()))
-    config = {
-        "networks": {f"mc_network_{instance_id}": {"driver": "bridge"}},
-        "services": {
-            f"prep_data_instance_{instance_id}": {
-                "image": "busybox:latest",
-                "command": [
-                    "sh",
-                    "-c",
-                    "mkdir -p /data /data/plugins /data/skins && "
-                    "chmod 777 /data /data/plugins /data/skins && "
-                    'if [ -d /source_plugins ] && [ -n "$(ls -A /source_plugins 2>/dev/null)" ]; then '
-                    "  cp -r /source_plugins/. /data/plugins/; "
-                    "fi; "
-                    'if [ -d /source_skins ] && [ -n "$(ls -A /source_skins 2>/dev/null)" ]; then '
-                    "  cp -r /source_skins/. /data/skins/; "
-                    "fi; "
-                    "chmod -R 777 /data/plugins /data/skins",
-                ],
-                "volumes": [
-                    f"{data_dir}:/data",
-                    f"{project_root}/server/plugins:/source_plugins:ro",
-                    f"{project_root}/server/skins:/source_skins:ro",
-                ],
-                "restart": "no",
+    services = {
+        f"prep_data_instance_{instance_id}": {
+            "image": "busybox:latest",
+            "command": [
+                "sh",
+                "-c",
+                "mkdir -p /data /data/plugins /data/skins && "
+                "chmod 777 /data /data/plugins /data/skins && "
+                'if [ -d /source_plugins ] && [ -n "$(ls -A /source_plugins 2>/dev/null)" ]; then '
+                "  cp -r /source_plugins/. /data/plugins/; "
+                "fi; "
+                'if [ -d /source_skins ] && [ -n "$(ls -A /source_skins 2>/dev/null)" ]; then '
+                "  cp -r /source_skins/. /data/skins/; "
+                "fi; "
+                + (
+                    "cp /source_config/spigot.yml /data/spigot.yml; "
+                    if disable_advancements
+                    else ""
+                )
+                + "chmod -R 777 /data/plugins /data/skins",
+            ],
+            "volumes": [
+                f"{data_dir}:/data",
+                f"{project_root}/server/plugins:/source_plugins:ro",
+                f"{project_root}/server/skins:/source_skins:ro",
+            ]
+            + (
+                [f"{project_root}/server/config:/source_config:ro"]
+                if disable_advancements
+                else []
+            ),
+            "restart": "no",
+        },
+        f"mc_instance_{instance_id}": {
+            "depends_on": {
+                f"prep_data_instance_{instance_id}": {
+                    "condition": "service_completed_successfully"
+                }
             },
-            f"mc_instance_{instance_id}": {
-                "depends_on": {
-                    f"prep_data_instance_{instance_id}": {
-                        "condition": "service_completed_successfully"
-                    }
-                },
-                "image": "itzg/minecraft-server:java21",
-                "tty": True,
-                "network_mode": "host",
-                **({"cpuset": cpuset} if cpuset else {}),
-                "environment": (
-                    lambda: {
-                        # Base server env, common to both normal and flat worlds
-                        "EULA": "TRUE",
-                        "VERSION": "1.21",
-                        "TYPE": "PAPER",
-                        "MODE": "survival",
-                        "RCON_PORT": rcon_port,
-                        "SERVER_PORT": mc_port,
-                        "ALLOW_FLIGHT": True,
-                        "ONLINE_MODE": False,
-                        "SPAWN_PROTECTION": 0,
-                        "SEED": seed,
-                        "ENFORCE_SECURE_PROFILE": False,
-                        "RCON_PASSWORD": "research",
-                        "BROADCAST_RCON_TO_OPS": True,
-                        **(
-                            {
-                                "LEVEL_TYPE": "minecraft:flat",
-                                "GENERATOR_SETTINGS": "TERRAIN_SETTINGS_PLACEHOLDER",
-                                **(
-                                    {"GENERATE_STRUCTURES": "false"}
-                                    if flatland_world_disable_structures
-                                    else {}
-                                ),
-                            }
-                            if str(world_type).lower() == "flat"
-                            else {}
-                        ),
-                    }
-                )(),
-                "volumes": [f"{data_dir}:/data"],
-                "healthcheck": {
-                    "test": [
-                        "CMD-SHELL",
-                        f"mc-monitor status --host localhost --port {mc_port}",
-                    ],
-                    "interval": "10s",
-                    "timeout": "5s",
-                    "retries": 12,
-                },
-            },
-            f"controller_alpha_instance_{instance_id}": {
-                "image": "solaris-engine-base:latest",
-                "build": {
-                    "context": project_root,
-                    "dockerfile": "Dockerfile",
-                },
-                "depends_on": {
-                    f"mc_instance_{instance_id}": {"condition": "service_healthy"},
-                    f"act_recorder_alpha_instance_{instance_id}": {
-                        "condition": "service_started"
-                    },
-                },
-                **({"cpuset": cpuset} if cpuset else {}),
-                "volumes": [f"{output_dir}:/output"],
-                "environment": {
-                    "BOT_NAME": "Alpha",
-                    "OTHER_BOT_NAME": "Bravo",
-                    "ACT_RECORDER_HOST": f"act_recorder_alpha_instance_{instance_id}",
-                    "ACT_RECORDER_PORT": act_recorder_port,
-                    "COORD_PORT": coord_port,
-                    "OTHER_COORD_HOST": f"controller_bravo_instance_{instance_id}",
-                    "OTHER_COORD_PORT": coord_port,
-                    "BOT_RNG_SEED": str(12345 + instance_id),
-                    "EPISODES_NUM": num_episodes,
-                    "EPISODE_START_ID": episode_start_id,
-                    "EPISODE_TYPES": episode_types,
-                    "MC_HOST": "host.docker.internal",
-                    "MC_PORT": mc_port,
-                    "RCON_HOST": "host.docker.internal",
+            "image": "itzg/minecraft-server:java21",
+            "tty": True,
+            "network_mode": "host",
+            **({"cpuset": cpuset} if cpuset else {}),
+            "environment": (
+                lambda: {
+                    # Base server env, common to both normal and flat worlds
+                    "EULA": "TRUE",
+                    "VERSION": "1.21",
+                    "TYPE": "PAPER",
+                    "MODE": "survival",
                     "RCON_PORT": rcon_port,
+                    "SERVER_PORT": mc_port,
+                    "ALLOW_FLIGHT": True,
+                    "ONLINE_MODE": False,
+                    "SPAWN_PROTECTION": 0,
+                    "SEED": seed,
+                    "ENFORCE_SECURE_PROFILE": False,
                     "RCON_PASSWORD": "research",
-                    "BOOTSTRAP_WAIT_TIME": bootstrap_wait_time,
-                    "ENABLE_CAMERA_WAIT": 1,
-                    "CAMERA_READY_RETRIES": 300,
-                    "CAMERA_READY_CHECK_INTERVAL": 2000,
-                    "MC_VERSION": "1.21",
-                    "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
-                    "VIEWER_RECORDING_INTERVAL": 50,
-                    "WALK_TIMEOUT": 5,
-                    "TELEPORT": 1,
-                    "TELEPORT_RADIUS": 50000,
-                    "WORLD_TYPE": str(world_type).lower(),
-                    "SMOKE_TEST": smoke_test,
-                    "INSTANCE_ID": instance_id,
-                    "OUTPUT_DIR": "/output",
-                    "EVAL_TIME_SET_DAY": eval_time_set_day,
-                },
-                "extra_hosts": ["host.docker.internal:host-gateway"],
-                "networks": [f"mc_network_{instance_id}"],
-                "command": "./controller/entrypoint.sh",
-            },
-            f"controller_bravo_instance_{instance_id}": {
-                "image": "solaris-engine-base:latest",
-                "build": {
-                    "context": project_root,
-                    "dockerfile": "Dockerfile",
-                },
-                "depends_on": {
-                    f"mc_instance_{instance_id}": {"condition": "service_healthy"},
-                    f"act_recorder_bravo_instance_{instance_id}": {
-                        "condition": "service_started"
-                    },
-                    f"controller_alpha_instance_{instance_id}": {
-                        "condition": "service_started"
-                    },
-                },
-                **({"cpuset": cpuset} if cpuset else {}),
-                "volumes": [f"{output_dir}:/output"],
-                "environment": {
-                    "BOT_NAME": "Bravo",
-                    "OTHER_BOT_NAME": "Alpha",
-                    "ACT_RECORDER_HOST": f"act_recorder_bravo_instance_{instance_id}",
-                    "ACT_RECORDER_PORT": act_recorder_port,
-                    "COORD_PORT": coord_port,
-                    "OTHER_COORD_HOST": f"controller_alpha_instance_{instance_id}",
-                    "OTHER_COORD_PORT": coord_port,
-                    "BOT_RNG_SEED": str(12345 + instance_id),
-                    "EPISODES_NUM": num_episodes,
-                    "EPISODE_START_ID": episode_start_id,
-                    "EPISODE_TYPES": episode_types,
-                    "MC_HOST": "host.docker.internal",
-                    "MC_PORT": mc_port,
-                    "RCON_HOST": "host.docker.internal",
-                    "RCON_PORT": rcon_port,
-                    "RCON_PASSWORD": "research",
-                    "BOOTSTRAP_WAIT_TIME": bootstrap_wait_time,
-                    "ENABLE_CAMERA_WAIT": 1,
-                    "CAMERA_READY_RETRIES": 300,
-                    "CAMERA_READY_CHECK_INTERVAL": 2000,
-                    "MC_VERSION": "1.21",
-                    "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
-                    "VIEWER_RECORDING_INTERVAL": 50,
-                    "WALK_TIMEOUT": 5,
-                    "TELEPORT": 1,
-                    "TELEPORT_RADIUS": 250,
-                    "WORLD_TYPE": str(world_type).lower(),
-                    "SMOKE_TEST": smoke_test,
-                    "INSTANCE_ID": instance_id,
-                    "OUTPUT_DIR": "/output",
-                    "EVAL_TIME_SET_DAY": eval_time_set_day,
-                },
-                "extra_hosts": ["host.docker.internal:host-gateway"],
-                "networks": [f"mc_network_{instance_id}"],
-                "command": "./controller/entrypoint.sh",
-            },
-            f"act_recorder_alpha_instance_{instance_id}": {
-                "image": "solaris-engine-base:latest",
-                "environment": {
-                    "PORT": act_recorder_port,
-                    "NAME": "Alpha",
-                    "INSTANCE_ID": instance_id,
-                    "EPISODE_START_ID": episode_start_id,
-                    "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
-                },
-                "tty": True,
-                **({"cpuset": cpuset} if cpuset else {}),
-                "volumes": [f"{output_dir}:/output"],
-                "networks": [f"mc_network_{instance_id}"],
-                "command": "./controller/act_recorder/entrypoint.sh",
-            },
-            f"act_recorder_bravo_instance_{instance_id}": {
-                "image": "solaris-engine-base:latest",
-                "environment": {
-                    "PORT": act_recorder_port,
-                    "NAME": "Bravo",
-                    "INSTANCE_ID": instance_id,
-                    "EPISODE_START_ID": episode_start_id,
-                    "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
-                },
-                "tty": True,
-                **({"cpuset": cpuset} if cpuset else {}),
-                "volumes": [f"{output_dir}:/output"],
-                "networks": [f"mc_network_{instance_id}"],
-                "command": "./controller/act_recorder/entrypoint.sh",
-            },
-            # Camera alpha: recording client
-            f"camera_alpha_instance_{instance_id}": {
-                "image": "solaris-engine-camera:latest",
-                "build": {
-                    "context": os.path.join(project_root, "camera"),
-                    "dockerfile": "Dockerfile",
-                },
-                "restart": "unless-stopped",
-                "network_mode": "host",
-                **({"cpuset": cpuset_camera_alpha} if cpuset_camera_alpha else {}),
-                "depends_on": {
-                    f"mc_instance_{instance_id}": {"condition": "service_healthy"}
-                },
-                "environment": {
-                    "MC_VERSION": "1.21",
-                    "MC_HOST": "127.0.0.1",
-                    "MC_PORT": mc_port,
-                    "CAMERA_NAME": "CameraAlpha",
-                    "DISPLAY": cam_ports["alpha_display"],
-                    "VNC_PORT": str(cam_ports["alpha_vnc"]),
-                    "NOVNC_PORT": str(cam_ports["alpha_novnc"]),
-                    "WIDTH": "1280",
-                    "HEIGHT": "720",
-                    "FPS": "20",
-                    "VNC_PASSWORD": "research",
-                    "ENABLE_RECORDING": "1",
-                    "RECORDING_PATH": "/output/camera_alpha.mkv",
-                    "RENDER_DISTANCE": render_distance,
-                    "SIMULATION_DISTANCE": simulation_distance,
-                    "GRAPHICS_MODE": graphics_mode,
+                    "BROADCAST_RCON_TO_OPS": True,
                     **(
                         {
-                            "NVIDIA_DRIVER_CAPABILITIES": "all",
-                            "NVIDIA_VISIBLE_DEVICES": gpu_device_id,
+                            "LEVEL_TYPE": "minecraft:flat",
+                            "GENERATOR_SETTINGS": "TERRAIN_SETTINGS_PLACEHOLDER",
+                            **(
+                                {"GENERATE_STRUCTURES": "false"}
+                                if flatland_world_disable_structures
+                                else {}
+                            ),
                         }
+                        if str(world_type).lower() == "flat"
+                        else {}
                     ),
-                },
-                "runtime": "nvidia",
-                "volumes": [
-                    f"{cam_paths['alpha_data_host']}:/root",
-                    f"{cam_paths['alpha_output_host']}:/output",
+                }
+            )(),
+            "volumes": [f"{data_dir}:/data"],
+            "healthcheck": {
+                "test": [
+                    "CMD-SHELL",
+                    f"mc-monitor status --host localhost --port {mc_port}",
                 ],
-            },
-            # Plugin starter: waits for all players then triggers episode start
-            f"plugin_starter_instance_{instance_id}": {
-                "image": "node:20",
-                "network_mode": "host",
-                **({"cpuset": cpuset} if cpuset else {}),
-                "depends_on": {
-                    f"mc_instance_{instance_id}": {"condition": "service_healthy"},
-                    f"camera_alpha_instance_{instance_id}": {
-                        "condition": "service_started"
-                    },
-                },
-                "working_dir": "/app",
-                "environment": {
-                    "RCON_HOST": "127.0.0.1",
-                    "RCON_PORT": rcon_port,
-                    "RCON_PASSWORD": "research",
-                    "EPISODE_START_RETRIES": "300",
-                    "EPISODE_REQUIRED_PLAYERS": "Alpha,CameraAlpha,Bravo,CameraBravo,SpectatorAlpha,SpectatorBravo",
-                    "EPISODE_START_COMMAND": "episode start Alpha CameraAlpha technoblade.png Bravo CameraBravo test.png",
-                },
-                "volumes": [
-                    f"{os.path.join(project_root, 'server', 'plugin-starter', 'plugin_starter.js')}:/app/plugin_starter.js:ro",
-                    f"{plugin_starter_package_json_host}:/app/package.json:ro",
-                ],
-                "command": [
-                    "sh",
-                    "-c",
-                    "npm install --omit=dev --no-progress && node plugin_starter.js",
-                ],
-            },
-            # Camera bravo: recording client
-            f"camera_bravo_instance_{instance_id}": {
-                "image": "solaris-engine-camera:latest",
-                "build": {
-                    "context": os.path.join(project_root, "camera"),
-                    "dockerfile": "Dockerfile",
-                },
-                "restart": "unless-stopped",
-                "network_mode": "host",
-                **({"cpuset": cpuset_camera_bravo} if cpuset_camera_bravo else {}),
-                "depends_on": {
-                    f"mc_instance_{instance_id}": {"condition": "service_healthy"}
-                },
-                "environment": {
-                    "MC_VERSION": "1.21",
-                    "MC_HOST": "127.0.0.1",
-                    "MC_PORT": mc_port,
-                    "CAMERA_NAME": "CameraBravo",
-                    "DISPLAY": cam_ports["bravo_display"],
-                    "VNC_PORT": str(cam_ports["bravo_vnc"]),
-                    "NOVNC_PORT": str(cam_ports["bravo_novnc"]),
-                    "WIDTH": "1280",
-                    "HEIGHT": "720",
-                    "FPS": "20",
-                    "VNC_PASSWORD": "research",
-                    "ENABLE_RECORDING": "1",
-                    "RECORDING_PATH": "/output/camera_bravo.mkv",
-                    "RENDER_DISTANCE": render_distance,
-                    "SIMULATION_DISTANCE": simulation_distance,
-                    "GRAPHICS_MODE": graphics_mode,
-                    **(
-                        {
-                            "NVIDIA_DRIVER_CAPABILITIES": "all",
-                            "NVIDIA_VISIBLE_DEVICES": gpu_device_id,
-                        }
-                    ),
-                },
-                "runtime": "nvidia",
-                "volumes": [
-                    f"{cam_paths['bravo_data_host']}:/root",
-                    f"{cam_paths['bravo_output_host']}:/output",
-                ],
-            },
-            # Passive spectator alpha
-            f"spectator_alpha_instance_{instance_id}": {
-                "image": "solaris-engine-base:latest",
-                "build": {
-                    "context": project_root,
-                    "dockerfile": "Dockerfile",
-                },
-                "restart": "unless-stopped",
-                **({"cpuset": cpuset} if cpuset else {}),
-                "depends_on": {
-                    f"mc_instance_{instance_id}": {"condition": "service_healthy"}
-                },
-                "working_dir": "/usr/src/app",
-                "environment": {
-                    "MC_HOST": "host.docker.internal",
-                    "MC_PORT": mc_port,
-                    "MC_USERNAME": "SpectatorAlpha",
-                },
-                "extra_hosts": [
-                    "host.docker.internal:host-gateway",
-                ],
-                "networks": [f"mc_network_{instance_id}"],
-                "command": ["node", "spectator/spectator.js"],
-            },
-            # Passive spectator bravo
-            f"spectator_bravo_instance_{instance_id}": {
-                "image": "solaris-engine-base:latest",
-                "build": {
-                    "context": project_root,
-                    "dockerfile": "Dockerfile",
-                },
-                "restart": "unless-stopped",
-                **({"cpuset": cpuset} if cpuset else {}),
-                "depends_on": {
-                    f"mc_instance_{instance_id}": {"condition": "service_healthy"}
-                },
-                "working_dir": "/usr/src/app",
-                "environment": {
-                    "MC_HOST": "host.docker.internal",
-                    "MC_PORT": mc_port,
-                    "MC_USERNAME": "SpectatorBravo",
-                },
-                "extra_hosts": [
-                    "host.docker.internal:host-gateway",
-                ],
-                "networks": [f"mc_network_{instance_id}"],
-                "command": ["node", "spectator/spectator.js"],
+                "interval": "10s",
+                "timeout": "5s",
+                "retries": 12,
             },
         },
+    }
+
+    for i, name in enumerate(players):
+        key = name.lower()
+        peer_endpoints = ",".join(
+            f"{p}:controller_{p.lower()}_instance_{instance_id}:{coord_port}"
+            for p in players
+            if p != name
+        )
+        camera_cpuset = cpusets_camera[i] if cpusets_camera else None
+        # First player gets a world-scale teleport; peers land close to it.
+        teleport_radius = 50000 if i == 0 else 250
+
+        controller_deps = {
+            f"mc_instance_{instance_id}": {"condition": "service_healthy"},
+            f"act_recorder_{key}_instance_{instance_id}": {
+                "condition": "service_started"
+            },
+        }
+        if i > 0:
+            prev_key = players[i - 1].lower()
+            controller_deps[f"controller_{prev_key}_instance_{instance_id}"] = {
+                "condition": "service_started"
+            }
+
+        services[f"controller_{key}_instance_{instance_id}"] = {
+            "image": "solaris-engine-base:latest",
+            "build": {
+                "context": project_root,
+                "dockerfile": "Dockerfile",
+            },
+            "depends_on": controller_deps,
+            **({"cpuset": cpuset} if cpuset else {}),
+            "volumes": [f"{output_dir}:/output"],
+            "environment": {
+                "BOT_NAME": name,
+                "ACT_RECORDER_HOST": f"act_recorder_{key}_instance_{instance_id}",
+                "ACT_RECORDER_PORT": act_recorder_port,
+                "COORD_PORT": coord_port,
+                "PEER_ENDPOINTS": peer_endpoints,
+                "BOT_RNG_SEED": str(12345 + instance_id),
+                "EPISODES_NUM": num_episodes,
+                "EPISODE_START_ID": episode_start_id,
+                "EPISODE_TYPES": episode_types,
+                "MC_HOST": "host.docker.internal",
+                "MC_PORT": mc_port,
+                "RCON_HOST": "host.docker.internal",
+                "RCON_PORT": rcon_port,
+                "RCON_PASSWORD": "research",
+                "BOOTSTRAP_WAIT_TIME": bootstrap_wait_time,
+                "ENABLE_CAMERA_WAIT": 1,
+                "CAMERA_READY_RETRIES": 300,
+                "CAMERA_READY_CHECK_INTERVAL": 2000,
+                "MC_VERSION": "1.21",
+                "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
+                "VIEWER_RECORDING_INTERVAL": 50,
+                "WALK_TIMEOUT": 5,
+                "TELEPORT": 1,
+                "TELEPORT_RADIUS": teleport_radius,
+                "WORLD_TYPE": str(world_type).lower(),
+                "SMOKE_TEST": smoke_test,
+                "INSTANCE_ID": instance_id,
+                "OUTPUT_DIR": "/output",
+                "EVAL_TIME_SET_DAY": eval_time_set_day,
+            },
+            "extra_hosts": ["host.docker.internal:host-gateway"],
+            "networks": [f"mc_network_{instance_id}"],
+            "command": "./controller/entrypoint.sh",
+        }
+
+        services[f"act_recorder_{key}_instance_{instance_id}"] = {
+            "image": "solaris-engine-base:latest",
+            "environment": {
+                "PORT": act_recorder_port,
+                "NAME": name,
+                "INSTANCE_ID": instance_id,
+                "EPISODE_START_ID": episode_start_id,
+                "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
+            },
+            "tty": True,
+            **({"cpuset": cpuset} if cpuset else {}),
+            "volumes": [f"{output_dir}:/output"],
+            "networks": [f"mc_network_{instance_id}"],
+            "command": "./controller/act_recorder/entrypoint.sh",
+        }
+
+        services[f"camera_{key}_instance_{instance_id}"] = {
+            "image": "solaris-engine-camera:latest",
+            "build": {
+                "context": os.path.join(project_root, "camera"),
+                "dockerfile": "Dockerfile",
+            },
+            "restart": "unless-stopped",
+            "network_mode": "host",
+            **({"cpuset": camera_cpuset} if camera_cpuset else {}),
+            "depends_on": {
+                f"mc_instance_{instance_id}": {"condition": "service_healthy"}
+            },
+            "environment": {
+                "MC_VERSION": "1.21",
+                "MC_HOST": "127.0.0.1",
+                "MC_PORT": mc_port,
+                **camera_env_overrides,
+                "CAMERA_NAME": f"Camera{name}",
+                "DISPLAY": cam_ports[f"{key}_display"],
+                "VNC_PORT": str(cam_ports[f"{key}_vnc"]),
+                "NOVNC_PORT": str(cam_ports[f"{key}_novnc"]),
+                "WIDTH": "1280",
+                "HEIGHT": "720",
+                "FPS": "20",
+                "VNC_PASSWORD": "research",
+                "ENABLE_RECORDING": "1",
+                "RECORDING_PATH": f"/output/camera_{key}.mkv",
+                "RENDER_DISTANCE": render_distance,
+                "SIMULATION_DISTANCE": simulation_distance,
+                "GRAPHICS_MODE": graphics_mode,
+                **(
+                    {
+                        "NVIDIA_DRIVER_CAPABILITIES": "all",
+                        "NVIDIA_VISIBLE_DEVICES": gpu_device_id,
+                    }
+                ),
+            },
+            "runtime": "nvidia",
+            "volumes": [
+                f"{cam_paths[f'{key}_data_host']}:/root",
+                f"{cam_paths[f'{key}_output_host']}:/output",
+            ],
+        }
+
+        services[f"spectator_{key}_instance_{instance_id}"] = {
+            "image": "solaris-engine-base:latest",
+            "build": {
+                "context": project_root,
+                "dockerfile": "Dockerfile",
+            },
+            "restart": "unless-stopped",
+            **({"cpuset": cpuset} if cpuset else {}),
+            "depends_on": {
+                f"mc_instance_{instance_id}": {"condition": "service_healthy"}
+            },
+            "working_dir": "/usr/src/app",
+            "environment": {
+                "MC_HOST": "host.docker.internal",
+                "MC_PORT": mc_port,
+                "MC_USERNAME": f"Spectator{name}",
+            },
+            "extra_hosts": [
+                "host.docker.internal:host-gateway",
+            ],
+            "networks": [f"mc_network_{instance_id}"],
+            "command": ["node", "spectator/spectator.js"],
+        }
+
+    # Plugin starter: waits for all players then triggers episode start
+    first_key = players[0].lower()
+    required_players = ",".join(
+        f"{p},Camera{p},Spectator{p}" for p in players
+    )
+    start_command_args = " ".join(
+        f"{p} Camera{p} {skins[i]}" for i, p in enumerate(players)
+    )
+    services[f"plugin_starter_instance_{instance_id}"] = {
+        "image": "node:20",
+        "network_mode": "host",
+        **({"cpuset": cpuset} if cpuset else {}),
+        "depends_on": {
+            f"mc_instance_{instance_id}": {"condition": "service_healthy"},
+            f"camera_{first_key}_instance_{instance_id}": {
+                "condition": "service_started"
+            },
+        },
+        "working_dir": "/app",
+        "environment": {
+            "RCON_HOST": "127.0.0.1",
+            "RCON_PORT": rcon_port,
+            "RCON_PASSWORD": "research",
+            "EPISODE_START_RETRIES": "300",
+            "EPISODE_REQUIRED_PLAYERS": required_players,
+            "EPISODE_START_COMMAND": f"episode start {start_command_args}",
+        },
+        "volumes": [
+            f"{os.path.join(project_root, 'server', 'plugin-starter', 'plugin_starter.js')}:/app/plugin_starter.js:ro",
+            f"{plugin_starter_package_json_host}:/app/package.json:ro",
+        ],
+        "command": [
+            "sh",
+            "-c",
+            "npm install --omit=dev --no-progress && node plugin_starter.js",
+        ],
+    }
+
+    config = {
+        "networks": {f"mc_network_{instance_id}": {"driver": "bridge"}},
+        "services": services,
     }
 
     return config
@@ -606,34 +526,61 @@ def main():
         required=True,
         help="Shared output directory for all instances (default: ./output)",
     )
-    # Camera-specific bases (absolute paths)
     parser.add_argument(
-        "--camera_output_alpha_base",
-        required=True,
-        help="Absolute base dir for per-instance Camera Alpha outputs (e.g., /abs/.../camera/output_alpha)",
+        "--num_players",
+        type=int,
+        default=2,
+        help=f"Number of players per instance (default: 2, max: {len(DEFAULT_PLAYERS)})",
     )
     parser.add_argument(
-        "--camera_output_bravo_base",
-        required=True,
-        help="Absolute base dir for per-instance Camera Bravo outputs (e.g., /abs/.../camera/output_bravo)",
-    )
-    parser.add_argument(
-        "--camera_data_alpha_base",
+        "--skins",
+        nargs="*",
         default=None,
-        help="Absolute base dir for per-instance Camera Alpha data (default: <project>/camera/data_alpha)",
+        help="Per-player skin filenames (length must equal --num_players). "
+        "Defaults to DEFAULT_SKINS lookup when players are the default NATO prefix.",
+    )
+    # Camera-specific bases (absolute paths) — one per player
+    parser.add_argument(
+        "--camera_output_bases",
+        nargs="+",
+        required=True,
+        help="Absolute base dirs for per-instance camera outputs, one per player "
+        "(length must equal --num_players).",
     )
     parser.add_argument(
-        "--camera_data_bravo_base",
+        "--camera_data_bases",
+        nargs="*",
         default=None,
-        help="Absolute base dir for per-instance Camera Bravo data (default: <project>/camera/data_bravo)",
+        help="Absolute base dirs for per-instance camera data, one per player "
+        "(default: <project>/camera/data_<playername>).",
     )
-    parser.add_argument("--camera_alpha_vnc_base", type=int, default=5901)
-    parser.add_argument("--camera_alpha_novnc_base", type=int, default=6901)
-    parser.add_argument("--camera_bravo_vnc_base", type=int, default=5902)
-    parser.add_argument("--camera_bravo_novnc_base", type=int, default=6902)
+    parser.add_argument(
+        "--camera_vnc_bases",
+        nargs="*",
+        type=int,
+        default=None,
+        help="Starting VNC ports, one per player (default: 5901..5901+N-1).",
+    )
+    parser.add_argument(
+        "--camera_novnc_bases",
+        nargs="*",
+        type=int,
+        default=None,
+        help="Starting noVNC ports, one per player (default: 6901..6901+N-1).",
+    )
     parser.add_argument("--display_base", type=int, default=99)
-    parser.add_argument("--vnc_step", type=int, default=2)
-    parser.add_argument("--display_step", type=int, default=2)
+    parser.add_argument(
+        "--vnc_step",
+        type=int,
+        default=None,
+        help="Stride between instances for VNC/noVNC ports (default: --num_players).",
+    )
+    parser.add_argument(
+        "--display_step",
+        type=int,
+        default=None,
+        help="Stride between instances for X display numbers (default: --num_players).",
+    )
     parser.add_argument(
         "--num_episodes",
         type=int,
@@ -717,28 +664,72 @@ def main():
         choices=["egl", "x11", "auto"],
         help="GPU rendering mode: egl (headless), x11 (requires host X), auto (default: egl)",
     )
+    parser.add_argument(
+        "--disable_advancements",
+        type=str,
+        default="false",
+        choices=["true", "false"],
+        help="Disable all Minecraft advancements via spigot.yml (default: false). When true, bootstrap_wait_time is overridden to 0 since advancement popups cannot appear.",
+    )
+    parser.add_argument(
+        "--camera_encoder",
+        type=str,
+        default=None,
+        choices=["libx264", "h264_nvenc"],
+        help="Video encoder for camera recording: libx264 (CPU) or h264_nvenc (NVIDIA GPU). "
+        "If unset, the container auto-detects based on ffmpeg capabilities.",
+    )
 
     args = parser.parse_args()
     # Ensure required dirs are absolute
     args.output_dir = absdir(args.output_dir)
     args.data_dir = absdir(args.data_dir)
-    args.camera_output_alpha_base = absdir(args.camera_output_alpha_base)
-    args.camera_output_bravo_base = absdir(args.camera_output_bravo_base)
 
-    # Defaults for camera data bases
+    # Resolve player list and validate per-player arg lengths
+    if args.num_players < 1 or args.num_players > len(DEFAULT_PLAYERS):
+        raise ValueError(
+            f"--num_players must be between 1 and {len(DEFAULT_PLAYERS)}"
+        )
+    players = DEFAULT_PLAYERS[: args.num_players]
+
+    if args.skins is None:
+        missing = [p for p in players if p not in DEFAULT_SKINS]
+        if missing:
+            raise ValueError(
+                f"No default skin for players {missing}; pass --skins explicitly."
+            )
+        args.skins = [DEFAULT_SKINS[p] for p in players]
+    if len(args.skins) != args.num_players:
+        raise ValueError("--skins length must equal --num_players")
+
+    if len(args.camera_output_bases) != args.num_players:
+        raise ValueError("--camera_output_bases length must equal --num_players")
+    args.camera_output_bases = [absdir(p) for p in args.camera_output_bases]
+
     project_root = str(Path(__file__).resolve().parent)
-    if args.camera_data_alpha_base is None:
-        args.camera_data_alpha_base = absdir(
-            os.path.join(project_root, "camera", "data_alpha")
-        )
+    if args.camera_data_bases is None:
+        args.camera_data_bases = [
+            absdir(os.path.join(project_root, "camera", f"data_{p.lower()}"))
+            for p in players
+        ]
     else:
-        args.camera_data_alpha_base = absdir(args.camera_data_alpha_base)
-    if args.camera_data_bravo_base is None:
-        args.camera_data_bravo_base = absdir(
-            os.path.join(project_root, "camera", "data_bravo")
-        )
-    else:
-        args.camera_data_bravo_base = absdir(args.camera_data_bravo_base)
+        if len(args.camera_data_bases) != args.num_players:
+            raise ValueError("--camera_data_bases length must equal --num_players")
+        args.camera_data_bases = [absdir(p) for p in args.camera_data_bases]
+
+    if args.camera_vnc_bases is None:
+        args.camera_vnc_bases = [5901 + i for i in range(args.num_players)]
+    elif len(args.camera_vnc_bases) != args.num_players:
+        raise ValueError("--camera_vnc_bases length must equal --num_players")
+    if args.camera_novnc_bases is None:
+        args.camera_novnc_bases = [6901 + i for i in range(args.num_players)]
+    elif len(args.camera_novnc_bases) != args.num_players:
+        raise ValueError("--camera_novnc_bases length must equal --num_players")
+
+    if args.vnc_step is None:
+        args.vnc_step = args.num_players
+    if args.display_step is None:
+        args.display_step = args.num_players
 
     # Create compose directory
     compose_dir = Path(args.compose_dir)
@@ -767,11 +758,12 @@ def main():
         gpu_id = i % gpu_count
         print(f"    Instance {i}: GPU {gpu_id}")
 
-    if total_instances > 4:
+    max_instances = 8 // args.num_players
+    if total_instances > max_instances:
         raise ValueError(
             f"total_instances={total_instances} exceeds the NVENC limit of 8 "
-            f"simultaneous encoding sessions per GPU. "
-            f"Please reduce the number of total instances to 4 or fewer."
+            f"simultaneous encoding sessions per GPU "
+            f"({args.num_players} cameras/instance → {max_instances} instances max)."
         )
 
     # Validate that all skin PNGs have pre-cached .customskin files
@@ -795,11 +787,18 @@ def main():
         world_type = world_plan[i]
         # Calculate cpuset string for this instance if CPU pinning is enabled
         instance_cpuset = None
-        camera_alpha_cpuset = None
-        camera_bravo_cpuset = None
+        cpusets_camera = None
 
         # Calculate GPU assignment for this instance (round-robin across available GPUs)
         gpu_device_id = i % gpu_count
+
+        # When advancements are disabled server-side, popups cannot appear,
+        # so the bootstrap wait (originally needed to let popups clear) is skipped.
+        effective_bootstrap_wait_time = (
+            0
+            if args.disable_advancements == "true"
+            else args.bootstrap_wait_time
+        )
 
         config = generate_compose_config(
             i,
@@ -811,7 +810,7 @@ def main():
             args.output_dir,
             args.num_episodes,
             args.episode_start_id,
-            args.bootstrap_wait_time,
+            effective_bootstrap_wait_time,
             args.episode_category,
             args.episode_types,
             args.smoke_test,
@@ -820,22 +819,19 @@ def main():
             str(args.render_distance),
             str(args.simulation_distance),
             str(args.graphics_mode),
-            # camera args
-            args.camera_output_alpha_base,
-            args.camera_output_bravo_base,
-            args.camera_data_alpha_base,
-            args.camera_data_bravo_base,
-            args.camera_alpha_vnc_base,
-            args.camera_alpha_novnc_base,
-            args.camera_bravo_vnc_base,
-            args.camera_bravo_novnc_base,
-            args.display_base,
-            args.vnc_step,
-            args.display_step,
+            # per-player
+            players=players,
+            skins=args.skins,
+            camera_output_bases=args.camera_output_bases,
+            camera_data_bases=args.camera_data_bases,
+            camera_vnc_bases=args.camera_vnc_bases,
+            camera_novnc_bases=args.camera_novnc_bases,
+            display_base=args.display_base,
+            vnc_step=args.vnc_step,
+            display_step=args.display_step,
             # CPU pinning
             cpuset=instance_cpuset,
-            cpuset_camera_alpha=camera_alpha_cpuset,
-            cpuset_camera_bravo=camera_bravo_cpuset,
+            cpusets_camera=cpusets_camera,
             # GPU settings
             gpu_device_id=gpu_device_id,
             gpu_mode=args.gpu_mode,
@@ -845,6 +841,9 @@ def main():
             flatland_world_disable_structures=bool(
                 args.flatland_world_disable_structures
             ),
+            # Advancement options
+            disable_advancements=(args.disable_advancements == "true"),
+            camera_encoder=args.camera_encoder,
         )
 
         # Write compose file
@@ -893,15 +892,14 @@ def main():
         # Camera output/data per-instance dirs
         cp = camera_paths(
             i,
-            args.camera_output_alpha_base,
-            args.camera_output_bravo_base,
-            args.camera_data_alpha_base,
-            args.camera_data_bravo_base,
+            players,
+            args.camera_output_bases,
+            args.camera_data_bases,
         )
-        os.makedirs(cp["alpha_output_host"], exist_ok=True)
-        os.makedirs(cp["bravo_output_host"], exist_ok=True)
-        os.makedirs(cp["alpha_data_host"], exist_ok=True)
-        os.makedirs(cp["bravo_data_host"], exist_ok=True)
+        for name in players:
+            key = name.lower()
+            os.makedirs(cp[f"{key}_output_host"], exist_ok=True)
+            os.makedirs(cp[f"{key}_data_host"], exist_ok=True)
 
         print(f"Generated: {compose_file}")
 
@@ -916,29 +914,18 @@ def main():
     print(
         f"  RCON ports: {args.base_rcon_port}-{args.base_rcon_port + total_instances - 1}"
     )
-    # Collision validation for camera ports
-    alpha_vncs = {
-        args.camera_alpha_vnc_base + args.vnc_step * i for i in range(total_instances)
-    }
-    alpha_novncs = {
-        args.camera_alpha_novnc_base + args.vnc_step * i for i in range(total_instances)
-    }
-    bravo_vncs = {
-        args.camera_bravo_vnc_base + args.vnc_step * i for i in range(total_instances)
-    }
-    bravo_novncs = {
-        args.camera_bravo_novnc_base + args.vnc_step * i for i in range(total_instances)
-    }
-    assert len(alpha_vncs) == total_instances, "alpha VNC port collisions detected"
-    assert len(alpha_novncs) == total_instances, "alpha noVNC port collisions detected"
-    assert len(bravo_vncs) == total_instances, "bravo VNC port collisions detected"
-    assert len(bravo_novncs) == total_instances, "bravo noVNC port collisions detected"
-    print(
-        f"  Camera Alpha noVNC: {args.camera_alpha_novnc_base}..{args.camera_alpha_novnc_base + args.vnc_step * (total_instances - 1)}"
-    )
-    print(
-        f"  Camera Bravo noVNC: {args.camera_bravo_novnc_base}..{args.camera_bravo_novnc_base + args.vnc_step * (total_instances - 1)}"
-    )
+    # Collision validation for camera ports (per-player)
+    for name, vnc_base, novnc_base in zip(
+        players, args.camera_vnc_bases, args.camera_novnc_bases
+    ):
+        vncs = {vnc_base + args.vnc_step * i for i in range(total_instances)}
+        novncs = {novnc_base + args.vnc_step * i for i in range(total_instances)}
+        assert len(vncs) == total_instances, f"{name} VNC port collisions detected"
+        assert len(novncs) == total_instances, f"{name} noVNC port collisions detected"
+    for name, base in zip(players, args.camera_novnc_bases):
+        print(
+            f"  Camera {name} noVNC: {base}..{base + args.vnc_step * (total_instances - 1)}"
+        )
     print(
         "Bridge network services (act_recorder, controller) use internal communication only."
     )

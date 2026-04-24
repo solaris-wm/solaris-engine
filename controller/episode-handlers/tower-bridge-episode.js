@@ -37,10 +37,12 @@ function getOnTowerBridgePhaseFn(
   episodeInstance,
   args,
 ) {
-  return async function onTowerBridgePhase(otherBotPosition) {
-    coordinator.sendToOtherBot(
+  return async function onTowerBridgePhase(peerMap) {
+    const otherBotPosition = peerMap.values().next().value.position;
+    const peerName = coordinator.getSinglePeerName();
+    coordinator.broadcastToPeers(
       `towerBridgePhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `towerBridgePhase_${iterationID} beginning`,
     );
@@ -69,11 +71,11 @@ function getOnTowerBridgePhaseFn(
 
     // STEP 2: Initial eye contact
     console.log(
-      `[${bot.username}] 👀 STEP 2: Making eye contact with ${args.other_bot_name}...`,
+      `[${bot.username}] 👀 STEP 2: Making eye contact with ${peerName}...`,
     );
     let actualOtherBotPosition = null;
     try {
-      const otherEntity = bot.players[args.other_bot_name]?.entity;
+      const otherEntity = bot.players[peerName]?.entity;
       if (otherEntity) {
         actualOtherBotPosition = otherEntity.position.clone();
         const targetPos = otherEntity.position.offset(0, otherEntity.height, 0);
@@ -137,7 +139,7 @@ function getOnTowerBridgePhaseFn(
       `[${bot.username}] 👀 STEP 6: Looking at other bot from tower top...`,
     );
     try {
-      const otherEntity2 = bot.players[args.other_bot_name]?.entity;
+      const otherEntity2 = bot.players[peerName]?.entity;
       if (otherEntity2) {
         actualOtherBotPosition = otherEntity2.position.clone();
         const targetPos = otherEntity2.position.offset(
@@ -161,7 +163,7 @@ function getOnTowerBridgePhaseFn(
     const myPos = bot.entity.position.clone();
 
     // Try to get updated other bot position
-    const otherEntity3 = bot.players[args.other_bot_name]?.entity;
+    const otherEntity3 = bot.players[peerName]?.entity;
     if (otherEntity3) {
       actualOtherBotPosition = otherEntity3.position.clone();
     }
@@ -249,7 +251,7 @@ function getOnTowerBridgePhaseFn(
     // STEP 9: Final eye contact
     console.log(`[${bot.username}] 👀 STEP 9: Final eye contact...`);
     try {
-      const otherEntity4 = bot.players[args.other_bot_name]?.entity;
+      const otherEntity4 = bot.players[peerName]?.entity;
       if (otherEntity4) {
         const targetPos = otherEntity4.position.offset(
           0,
@@ -275,24 +277,19 @@ function getOnTowerBridgePhaseFn(
     stopPathfinder(bot);
 
     // STEP 10: Transition to stop phase (end episode)
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      `towerBridgePhase_${iterationID} end`,
+      { location: `towerBridgePhase_${iterationID} end` },
     );
 
     return { towerResult, bridgeResult };
@@ -317,14 +314,11 @@ class TowerBridgeEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     await ensureBotHasEnough(bot, rcon, BRIDGE_BLOCK_TYPE, 64);
     await unequipHand(bot);
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -336,8 +330,9 @@ class TowerBridgeEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `towerBridgePhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnTowerBridgePhaseFn(
         bot,
@@ -349,12 +344,7 @@ class TowerBridgeEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `towerBridgePhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 

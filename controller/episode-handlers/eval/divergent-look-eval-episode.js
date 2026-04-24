@@ -12,10 +12,10 @@ function getOnDivergentLookPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    coordinator.broadcastToPeers(
       "divergentLookPhase",
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       "divergentLookPhase beginning",
     );
@@ -41,25 +41,19 @@ function getOnDivergentLookPhaseFn(
     }
 
     // Setup stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "divergentLookPhase end",
+      { location: "divergentLookPhase end" },
     );
   };
 }
@@ -89,14 +83,15 @@ class DivergentLookEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
+    const peerName = coordinator.getSinglePeerName();
     // Generate two random yaw values
     const yaw1 = sharedBotRng() * 2 * Math.PI - Math.PI;
     const yaw2 = sharedBotRng() * 2 * Math.PI - Math.PI;
 
     // Assign yaws deterministically by name sorting
-    const isAlpha = bot.username < args.other_bot_name;
+    const isAlpha = bot.username < peerName;
     const myYaw = isAlpha ? yaw1 : yaw2;
 
     // Store yaw values on instance for the phase handler to set metadata
@@ -111,10 +106,7 @@ class DivergentLookEvalEpisode extends BaseEpisode {
     const dz = -Math.cos(myYaw);
     const fakeTarget = botPosition.offset(dx * 10, 0, dz * 10);
 
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: fakeTarget,
-    };
+    return fakeTarget;
   }
 
   async entryPoint(
@@ -126,8 +118,9 @@ class DivergentLookEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "divergentLookPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnDivergentLookPhaseFn(
         bot,
@@ -138,12 +131,7 @@ class DivergentLookEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "divergentLookPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }

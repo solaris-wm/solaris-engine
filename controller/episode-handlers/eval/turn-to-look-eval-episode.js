@@ -13,25 +13,25 @@ function getOnTurnToLookPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
+  return async (peerMap) => {
     bot.pathfinder.setGoal(null);
     bot.clearControlStates();
     await bot.waitForTicks(2);
 
-    coordinator.sendToOtherBot(
+    coordinator.broadcastToPeers(
       "turnToLookPhase",
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       "turnToLookPhase beginning",
     );
 
-    const otherName = args.other_bot_name;
+    const otherName = coordinator.getSinglePeerName();
     const other = bot.players[otherName]?.entity;
     if (!other) {
       console.log(`[${bot.username}] Other bot missing, skipping.`);
-      coordinator.sendToOtherBot(
+      coordinator.broadcastToPeers(
         "stopPhase",
-        bot.entity.position.clone(),
+        { position: bot.entity.position.clone() },
         episodeNum,
         "missing other bot",
       );
@@ -95,25 +95,19 @@ function getOnTurnToLookPhaseFn(
     }
 
     // ---- Phase 5: Stop phase ----
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "turnToLookPhase end",
+      { location: "turnToLookPhase end" },
     );
   };
 }
@@ -135,8 +129,9 @@ class TurnToLookEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "turnToLookPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnTurnToLookPhaseFn(
         bot,
@@ -147,13 +142,7 @@ class TurnToLookEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "turnToLookPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }

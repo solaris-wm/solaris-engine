@@ -48,7 +48,7 @@ Options
      - ``2``
      - Number of episodes per batch
    * - ``--dataset-name NAME``
-     - ``duet``
+     - ``multiplayer``
      - Name of the output dataset under ``<output-dir>/datasets/``
    * - ``--filter-water-episodes true|false``
      - ``true``
@@ -762,7 +762,7 @@ Options
      - Starting episode ID.
    * - ``--bootstrap_wait_time SEC``
      - ``60``
-     - Time for servers/plugins to bootstrap before controllers start.
+     - Time for servers/plugins to bootstrap before controllers start. Overridden to ``0`` when ``--disable_advancements true`` is set, since popups cannot appear and no wait is needed.
    * - ``--episode_category STR``
      - ``look``
      - High‑level episode category name.

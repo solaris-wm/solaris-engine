@@ -111,15 +111,15 @@ function getOnStraightLineWalkPhaseFn(
   sharedBotRng,
   coordinator,
   iterationID,
-  otherBotName,
   episodeNum,
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       `straightLineWalkPhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `straightLineWalkPhase_${iterationID} beginning`,
     );
@@ -140,13 +140,14 @@ function getOnStraightLineWalkPhaseFn(
 
     // Determine if this bot should walk based on the selected mode
     let shouldThisBotWalk = false;
+    const sortedNames = coordinator.getAllPlayerNames().slice().sort();
 
     switch (selectedMode) {
       case "lower_name_walks_straight":
-        shouldThisBotWalk = bot.username < otherBotName;
+        shouldThisBotWalk = bot.username === sortedNames[0];
         break;
       case "bigger_name_walks_straight":
-        shouldThisBotWalk = bot.username > otherBotName;
+        shouldThisBotWalk = bot.username === sortedNames[sortedNames.length - 1];
         break;
     }
 
@@ -179,24 +180,19 @@ function getOnStraightLineWalkPhaseFn(
     }
 
     // Assuming 3 iterations like the original
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        otherBotName,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      `straightLineWalkPhase_${iterationID} end`,
+      { location: `straightLineWalkPhase_${iterationID} end` },
     );
   };
 }
@@ -217,8 +213,9 @@ class StraightLineEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `straightLineWalkPhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnStraightLineWalkPhaseFn(
         bot,
@@ -226,17 +223,11 @@ class StraightLineEpisode extends BaseEpisode {
         sharedBotRng,
         coordinator,
         iterationID,
-        args.other_bot_name,
         episodeNum,
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `straightLineWalkPhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 

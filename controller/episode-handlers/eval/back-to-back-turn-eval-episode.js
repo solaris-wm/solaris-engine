@@ -18,10 +18,12 @@ function getOnBackToBackTurnPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       "backToBackTurnPhase",
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       "backToBackTurnPhase beginning",
     );
@@ -32,7 +34,7 @@ function getOnBackToBackTurnPhaseFn(
     const speedBravo =
       MIN_TURN_SPEED + sharedBotRng() * (MAX_TURN_SPEED - MIN_TURN_SPEED);
 
-    const isAlpha = bot.username < args.other_bot_name;
+    const isAlpha = bot.username < peerName;
     const mySpeed = isAlpha ? speedAlpha : speedBravo;
 
     // Compute actual turn angle from current yaw to the other bot
@@ -76,25 +78,19 @@ function getOnBackToBackTurnPhaseFn(
     }
 
     // Setup stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "backToBackTurnPhase end",
+      { location: "backToBackTurnPhase end" },
     );
   };
 }
@@ -118,8 +114,10 @@ class BackToBackTurnEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerPositionsMap.values().next().value;
     // Direction toward the other bot (Minecraft yaw convention)
     const dxToOther = otherBotPosition.x - botPosition.x;
     const dzToOther = otherBotPosition.z - botPosition.z;
@@ -133,7 +131,7 @@ class BackToBackTurnEvalEpisode extends BaseEpisode {
       MIN_OFFSET + sharedBotRng() * (2 * Math.PI - 2 * MIN_OFFSET);
 
     // Assign offsets deterministically by name sorting
-    const isAlpha = bot.username < args.other_bot_name;
+    const isAlpha = bot.username < peerName;
     const myOffset = isAlpha ? offset1 : offset2;
 
     // Compute randomized yaw for this bot, wrapped to [-π, π]
@@ -155,10 +153,7 @@ class BackToBackTurnEvalEpisode extends BaseEpisode {
     const dz = -Math.cos(myYaw);
     const fakeTarget = botPosition.offset(dx * 10, 0, dz * 10);
 
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: fakeTarget,
-    };
+    return fakeTarget;
   }
 
   async entryPoint(
@@ -170,8 +165,9 @@ class BackToBackTurnEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "backToBackTurnPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnBackToBackTurnPhaseFn(
         bot,
@@ -182,12 +178,7 @@ class BackToBackTurnEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "backToBackTurnPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }

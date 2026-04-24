@@ -132,7 +132,9 @@ function getOnPvpPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
+  return async (peerMap) => {
+    const otherBotPosition = peerMap.values().next().value.position;
+    const peerName = coordinator.getSinglePeerName();
     const startTime = Date.now();
     console.log(
       `[${bot.username}] ⚔️ PVP EPISODE STARTING - Episode ${episodeNum}, Iteration ${iterationID}`,
@@ -143,9 +145,9 @@ function getOnPvpPhaseFn(
       ).toISOString()}`,
     );
 
-    coordinator.sendToOtherBot(
+    coordinator.broadcastToPeers(
       `pvpPhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `pvpPhase_${iterationID} beginning`,
     );
@@ -158,9 +160,9 @@ function getOnPvpPhaseFn(
     // STEP 2: Both bots look at each other
     console.log(`[${bot.username}] 👀 STEP 2: Looking at other bot...`);
     try {
-      await lookAtBot(bot, args.other_bot_name, 180);
+      await lookAtBot(bot, peerName, 180);
       console.log(
-        `[${bot.username}] ✅ Initial eye contact established with ${args.other_bot_name}`,
+        `[${bot.username}] ✅ Initial eye contact established with ${peerName}`,
       );
       await sleep(INITIAL_EYE_CONTACT_MS);
     } catch (lookError) {
@@ -181,9 +183,7 @@ function getOnPvpPhaseFn(
       )}, ${myPosition.y.toFixed(1)}, ${myPosition.z.toFixed(1)})`,
     );
     console.log(
-      `[${bot.username}]    ${
-        args.other_bot_name
-      } position: (${otherPosition.x.toFixed(1)}, ${otherPosition.y.toFixed(
+      `[${bot.username}]    ${peerName} position: (${otherPosition.x.toFixed(1)}, ${otherPosition.y.toFixed(
         1,
       )}, ${otherPosition.z.toFixed(1)})`,
     );
@@ -221,7 +221,7 @@ function getOnPvpPhaseFn(
       Math.floor(
         sharedBotRng() * (PVP_DURATION_MS_MAX - PVP_DURATION_MS_MIN + 1),
       );
-    await pvpCombatLoop(bot, args.other_bot_name, pvpDurationMS);
+    await pvpCombatLoop(bot, peerName, pvpDurationMS);
 
     // STEP 8: Episode ends
     console.log(`[${bot.username}] 🎬 STEP 8: PVP episode ending...`);
@@ -237,24 +237,19 @@ function getOnPvpPhaseFn(
 
     // Transition to stop phase
     console.log(`[${bot.username}] 🔄 Transitioning to stop phase...`);
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      `pvpPhase_${iterationID} end`,
+      { location: `pvpPhase_${iterationID} end` },
     );
 
     console.log(
@@ -281,7 +276,7 @@ class PvpEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     // No setup needed - swords are equipped during the episode
     // Wait for the item to be added to inventory
@@ -289,10 +284,7 @@ class PvpEpisode extends BaseEpisode {
     await sleep(500);
     await unequipHand(bot);
     await sleep(500);
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -304,8 +296,9 @@ class PvpEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `pvpPhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnPvpPhaseFn(
         bot,
@@ -317,12 +310,7 @@ class PvpEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `pvpPhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 

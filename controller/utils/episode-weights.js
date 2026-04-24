@@ -3,13 +3,16 @@
 const episodeTypicalLengths = {
   straightLineWalk: 20,
   chase: 10,
+  chaseNp: 10,
   orbit: 60,
   walkLook: 60,
+  walkLookNp: 60,
   walkLookAway: 60,
   pvp: 15,
   pve: 60,
   buildStructure: 15,
   buildTower: 12,
+  buildTowerNp: 12,
   mine: 10,
   towerBridge: 22,
   buildHouse: 120,
@@ -27,6 +30,7 @@ const episodeTypicalLengths = {
   blindTurnEval: 60,
   parallelTurnEval: 60,
   wallWalkEval: 60,
+  wallOcclusionEval: 60,
 };
 
 /**

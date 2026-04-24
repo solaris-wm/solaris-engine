@@ -9,6 +9,10 @@ const {
 const { GoalXZ } = require("../../utils/bot-factory");
 const { rconTp } = require("../../utils/coordination");
 const { sleep } = require("../../utils/helpers");
+const {
+  hideNameTags,
+  restoreNameTags,
+} = require("../../utils/name-tag-visibility");
 const { BaseEpisode } = require("../base-episode");
 
 const CAMERA_SPEED_DEGREES_PER_SEC = 30;
@@ -26,10 +30,12 @@ function getOnWallWalkPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       "wallWalkPhase",
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       "wallWalkPhase beginning",
     );
@@ -104,7 +110,7 @@ function getOnWallWalkPhaseFn(
       stopAll(bot);
 
       // Turn to face observer
-      const otherEntity = bot.players[args.other_bot_name]?.entity;
+      const otherEntity = bot.players[peerName]?.entity;
       const currentOtherPos = otherEntity
         ? otherEntity.position
         : otherBotPosition;
@@ -127,25 +133,19 @@ function getOnWallWalkPhaseFn(
     }
 
     // Setup stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "wallWalkPhase end",
+      { location: "wallWalkPhase end" },
     );
   };
 }
@@ -169,10 +169,12 @@ class WallWalkEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerPositionsMap.values().next().value;
     // Only the lead bot (alphabetically first) places the wall
-    const isLeadBot = bot.username < args.other_bot_name;
+    const isLeadBot = bot.username < peerName;
 
     // Use sharedBotRng to decide walker/observer (same result for both bots)
     const walkerIsLead = sharedBotRng() < 0.5;
@@ -236,6 +238,10 @@ class WallWalkEvalEpisode extends BaseEpisode {
       const fillCmd = `fill ${x1} ${y1} ${z1} ${x2} ${y2} ${z2} stone`;
       const fillRes = await rcon.send(fillCmd);
       console.log(`[${bot.username}] Wall fill result: ${fillRes}`);
+
+      // Hide name tags so the wall genuinely occludes the observer.
+      // Without this the floating tag renders through the wall.
+      await hideNameTags(rcon, coordinator.getAllPlayerNames());
     }
 
     this._evalMetadata = {
@@ -283,14 +289,11 @@ class WallWalkEvalEpisode extends BaseEpisode {
     await rconTp(rcon, bot.username, botPosNew.x, botPosNew.y, botPosNew.z);
     await sleep(1000);
 
-    return {
-      botPositionNew: botPosNew,
-      otherBotPositionNew: otherPosNew,
-    };
+    return otherPosNew;
   }
 
   async tearDownEpisode(bot, rcon, sharedBotRng, coordinator, episodeNum, args) {
-    // Only the lead bot removes the wall
+    // Only the lead bot removes the wall and restores name tags
     if (this._isLeadBot && this._fillCoords) {
       const { x1, y1, z1, x2, y2, z2 } = this._fillCoords;
       console.log(
@@ -303,6 +306,7 @@ class WallWalkEvalEpisode extends BaseEpisode {
       } catch (err) {
         console.error(`[${bot.username}] Failed to clear wall:`, err);
       }
+      await restoreNameTags(rcon);
     }
   }
 
@@ -315,8 +319,9 @@ class WallWalkEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "wallWalkPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnWallWalkPhaseFn(
         bot,
@@ -327,12 +332,7 @@ class WallWalkEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "wallWalkPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }

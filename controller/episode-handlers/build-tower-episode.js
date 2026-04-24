@@ -2,15 +2,19 @@
 const { ensureBotHasEnough, unequipHand } = require("../primitives/items");
 
 const { buildTowerUnderneath } = require("../primitives/building");
-const { sleep } = require("../primitives/movement");
+const { lookAtSmooth, sleep } = require("../primitives/movement");
 const { BaseEpisode } = require("./base-episode");
 
 // Constants for tower building behavior
 const INITIAL_EYE_CONTACT_MS = 1500; // Initial look duration
 const FINAL_EYE_CONTACT_MS = 1500; // Final look duration
+const CAMERA_SPEED_DEGREES_PER_SEC = 60; // Gaze rotation speed
 const MIN_TOWER_HEIGHT = 8; // Minimum tower height
 const MAX_TOWER_HEIGHT = 12; // Maximum tower height
 const TOWER_BLOCK_TYPE = "oak_planks"; // Block type for towers
+// Pass peer FEET (not eye) as the look-at target: lookAtSmooth uses bot feet as the
+// rotation source, so feet-to-feet and eye-to-eye produce the same pitch. Adding an
+// eye-height offset would tilt the gaze upward by ~9° at ~10-block distance.
 const JUMP_DURATION_MS = 50; // How long to hold jump
 const PLACE_RETRY_DELAY_MS = 20; // Delay between place attempts
 const MAX_PLACE_ATTEMPTS = 10; // Max attempts to place a block
@@ -38,10 +42,11 @@ function getOnBuildTowerPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async function onBuildTowerPhase(otherBotPosition) {
-    coordinator.sendToOtherBot(
+  return async function onBuildTowerPhase(peerMap) {
+    const peerName = coordinator.getSinglePeerName();
+    coordinator.broadcastToPeers(
       `buildTowerPhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `buildTowerPhase_${iterationID} beginning`,
     );
@@ -54,13 +59,13 @@ function getOnBuildTowerPhaseFn(
     console.log(`[${bot.username}] ✅ STEP 1: Bot spawned`);
     // STEP 2: Initial eye contact
     console.log(
-      `[${bot.username}] 👀 STEP 2: Making eye contact with ${args.other_bot_name}...`,
+      `[${bot.username}] 👀 STEP 2: Making eye contact with ${peerName}...`,
     );
     try {
-      const otherEntity = bot.players[args.other_bot_name]?.entity;
+      const otherEntity = bot.players[peerName]?.entity;
       if (otherEntity) {
-        const targetPos = otherEntity.position.offset(0, otherEntity.height, 0);
-        await bot.lookAt(targetPos, false);
+        const targetPos = otherEntity.position;
+        await lookAtSmooth(bot, targetPos, CAMERA_SPEED_DEGREES_PER_SEC);
         await sleep(INITIAL_EYE_CONTACT_MS);
       }
     } catch (lookError) {
@@ -68,6 +73,14 @@ function getOnBuildTowerPhaseFn(
         `[${bot.username}] ⚠️ Could not look at other bot: ${lookError.message}`,
       );
     }
+
+    // Barrier: lookAtSmooth time varies with initial orientation — align build start.
+    await coordinator.syncAllPeers(
+      `buildTowerStart_${iterationID}`,
+      {},
+      episodeNum,
+      { location: `buildTowerPhase_${iterationID} build-start barrier` },
+    );
 
     // STEP 3: Prepare to place blocks
     console.log(`[${bot.username}] 📐 STEP 3: Preparing to build tower...`);
@@ -88,13 +101,21 @@ function getOnBuildTowerPhaseFn(
       enableRetry: false, // simpler version without retry logic
     });
 
+    // Barrier so both bots gaze together after (possibly different-height) towers finish.
+    await coordinator.syncAllPeers(
+      `buildTowerEnd_${iterationID}`,
+      {},
+      episodeNum,
+      { location: `buildTowerPhase_${iterationID} build-end barrier` },
+    );
+
     // STEP 6: Final eye contact
     console.log(`[${bot.username}] 👀 STEP 6: Final eye contact...`);
     try {
-      const otherEntity = bot.players[args.other_bot_name]?.entity;
+      const otherEntity = bot.players[peerName]?.entity;
       if (otherEntity) {
-        const targetPos = otherEntity.position.offset(0, otherEntity.height, 0);
-        await bot.lookAt(targetPos, false);
+        const targetPos = otherEntity.position;
+        await lookAtSmooth(bot, targetPos, CAMERA_SPEED_DEGREES_PER_SEC);
         await sleep(FINAL_EYE_CONTACT_MS);
       }
     } catch (lookError) {
@@ -109,24 +130,19 @@ function getOnBuildTowerPhaseFn(
     );
 
     // STEP 7: Transition to stop phase (end episode)
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      `buildTowerPhase_${iterationID} end`,
+      { location: `buildTowerPhase_${iterationID} end` },
     );
 
     return buildResult;
@@ -151,15 +167,12 @@ class BuildTowerEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     // Give tower building blocks via RCON
     await ensureBotHasEnough(bot, rcon, TOWER_BLOCK_TYPE, 64);
     await unequipHand(bot);
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -171,8 +184,9 @@ class BuildTowerEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `buildTowerPhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnBuildTowerPhaseFn(
         bot,
@@ -184,12 +198,7 @@ class BuildTowerEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `buildTowerPhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 

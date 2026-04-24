@@ -16,10 +16,11 @@ function getOnParallelTurnPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       "parallelTurnPhase",
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       "parallelTurnPhase beginning",
     );
@@ -49,25 +50,19 @@ function getOnParallelTurnPhaseFn(
     }
 
     // Setup stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "parallelTurnPhase end",
+      { location: "parallelTurnPhase end" },
     );
   };
 }
@@ -90,10 +85,12 @@ class ParallelTurnEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerPositionsMap.values().next().value;
     // Compute canonical connecting vector (alphabetically-first bot → second bot)
-    const sortedNames = [bot.username, args.other_bot_name].sort();
+    const sortedNames = [bot.username, peerName].sort();
     const isAlpha = bot.username === sortedNames[0];
 
     // Canonical vector: alpha → bravo
@@ -130,10 +127,7 @@ class ParallelTurnEvalEpisode extends BaseEpisode {
       perpZ * dir * 10,
     );
 
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: fakeTarget,
-    };
+    return fakeTarget;
   }
 
   async entryPoint(
@@ -145,8 +139,9 @@ class ParallelTurnEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "parallelTurnPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnParallelTurnPhaseFn(
         bot,
@@ -157,12 +152,7 @@ class ParallelTurnEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "parallelTurnPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }

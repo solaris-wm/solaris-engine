@@ -16,10 +16,11 @@ function getOnBlindTurnPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       "blindTurnPhase",
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       "blindTurnPhase beginning",
     );
@@ -81,25 +82,19 @@ function getOnBlindTurnPhaseFn(
     }
 
     // Setup stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "blindTurnPhase end",
+      { location: "blindTurnPhase end" },
     );
   };
 }
@@ -122,14 +117,16 @@ class BlindTurnEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerPositionsMap.values().next().value;
     // Determine roles and store on instance so phase handler can read them
     const blindRoll = sharedBotRng();
-    const sortedNames = [bot.username, args.other_bot_name].sort();
+    const sortedNames = [bot.username, peerName].sort();
     const blindBotName = blindRoll < 0.5 ? sortedNames[0] : sortedNames[1];
     const watcherBotName =
-      blindBotName === bot.username ? args.other_bot_name : bot.username;
+      blindBotName === bot.username ? peerName : bot.username;
     const isBlindBot = bot.username === blindBotName;
     const sideDir = sharedBotRng() < 0.5 ? 1 : -1;
 
@@ -151,16 +148,10 @@ class BlindTurnEvalEpisode extends BaseEpisode {
       const sideZ = nx * sideDir;
 
       const fakeTarget = botPosition.offset(sideX * 10, 0, sideZ * 10);
-      return {
-        botPositionNew: botPosition,
-        otherBotPositionNew: fakeTarget,
-      };
+      return fakeTarget;
     } else {
       // Watcher faces the blind bot (actual other bot position)
-      return {
-        botPositionNew: botPosition,
-        otherBotPositionNew: otherBotPosition,
-      };
+      return otherBotPosition;
     }
   }
 
@@ -173,8 +164,9 @@ class BlindTurnEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "blindTurnPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnBlindTurnPhaseFn(
         bot,
@@ -185,12 +177,7 @@ class BlindTurnEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "blindTurnPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }
