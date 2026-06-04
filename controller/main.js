@@ -76,6 +76,14 @@ async function main() {
     ),
   );
 
+  // Capture an agent-centred voxel grid each tick while an episode records.
+  if (args.record_voxels) {
+    const { makeVoxelRecorder } = require("./voxel_recorder");
+    const voxelRecorder = makeVoxelRecorder(bot, args);
+    bot.on("startepisode", (episodeNum) => voxelRecorder.start(episodeNum));
+    bot.on("endepisode", () => voxelRecorder.stop());
+  }
+
   // Handle system chat packets
   bot._client.on("packet", (data, meta) => {
     if (meta.name === "system_chat" && data && data.content) {

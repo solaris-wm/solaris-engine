@@ -59,4 +59,7 @@ exec node controller/main.js \
   --world_type "${WORLD_TYPE:-flat}" \
   --instance_id "${INSTANCE_ID:-0}" \
   --output_dir "${OUTPUT_DIR:-/output}" \
+  --record_voxels "${RECORD_VOXELS:-0}" \
+  --voxel_grid "${VOXEL_GRID:-48}" \
+  --voxel_interval "${VOXEL_INTERVAL:-50}" \
   --eval_time_set_day "${EVAL_TIME_SET_DAY:-0}"
