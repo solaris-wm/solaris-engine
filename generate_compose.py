@@ -138,6 +138,10 @@ def generate_compose_config(
     disable_advancements: bool = False,
     # Camera encoder ("h264_nvenc" or "libx264"); None = auto-detect in container
     camera_encoder: Optional[str] = None,
+    # Voxel recording options
+    record_voxels: int = 0,
+    voxel_grid: int = 48,
+    voxel_interval: int = 50,
 ):
     """Generate a Docker Compose configuration for a single instance."""
 
@@ -327,6 +331,15 @@ def generate_compose_config(
                 "INSTANCE_ID": instance_id,
                 "OUTPUT_DIR": "/output",
                 "EVAL_TIME_SET_DAY": eval_time_set_day,
+                **(
+                    {
+                        "RECORD_VOXELS": 1,
+                        "VOXEL_GRID": voxel_grid,
+                        "VOXEL_INTERVAL": voxel_interval,
+                    }
+                    if record_voxels
+                    else {}
+                ),
             },
             "extra_hosts": ["host.docker.internal:host-gateway"],
             "networks": [f"mc_network_{instance_id}"],
@@ -634,6 +647,25 @@ def main():
         help="Set time to day at the start of eval episodes (default: 0)",
     )
     parser.add_argument(
+        "--record_voxels",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Record an agent-centred voxel grid per episode (default: 0)",
+    )
+    parser.add_argument(
+        "--voxel_grid",
+        type=int,
+        default=48,
+        help="Voxel cube edge length in blocks (default: 48)",
+    )
+    parser.add_argument(
+        "--voxel_interval",
+        type=int,
+        default=50,
+        help="Voxel capture interval in milliseconds (default: 50 = 20 Hz)",
+    )
+    parser.add_argument(
         "--flatland_world_disable_structures",
         type=int,
         default=0,
@@ -859,6 +891,10 @@ def main():
             # Advancement options
             disable_advancements=(args.disable_advancements == "true"),
             camera_encoder=args.camera_encoder,
+            # Voxel recording options
+            record_voxels=args.record_voxels,
+            voxel_grid=args.voxel_grid,
+            voxel_interval=args.voxel_interval,
         )
 
         # Write compose file
