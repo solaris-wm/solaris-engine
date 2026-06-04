@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import subprocess
 import sys
 import time
@@ -13,6 +14,9 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import cv2
+import numpy as np
+
+import voxel_io
 
 
 # Unconsumed frames within this many seconds of the recording start/end are
@@ -546,6 +550,138 @@ def align_recording(config: AlignmentInput) -> Dict[str, Any]:
 
     return output_metadata
 
+
+# ---------------------------------------------------------------------------
+# Voxel + camera-state alignment
+#
+# For an episode whose controller recorded a voxel stream, match each matched
+# action (one per aligned video frame) to its nearest-in-time voxel capture and
+# write ``<stem>_voxels.npz`` (per-timestep cubes + world origins) plus
+# ``<stem>_camera_state.json`` (per-timestep pose: position, 6D rotation, FOV).
+# When no voxel stream exists for the episode, nothing extra is written.
+# ---------------------------------------------------------------------------
+
+# Minecraft's default vertical field of view, in degrees.
+_CAMERA_FOV_DEGREES = 70.0
+
+
+def yaw_pitch_to_rot6d(yaw: float, pitch: float) -> List[float]:
+    """Convert mineflayer yaw/pitch (radians) to a 6D rotation (first two columns of R).
+
+    Builds an orthonormal camera basis from the recorded look angles: ``forward``
+    is the view direction, ``right`` is perpendicular to it and world up, and
+    ``up = right x forward``.  Returns ``[right, up]`` flattened (the first two
+    columns of R); the third column is ``right x up`` = ``-forward`` (the camera's
+    backward axis), so a consumer recovering the view direction must use
+    ``forward = up x right``.
+    """
+    cy, sy = math.cos(yaw), math.sin(yaw)
+    cp, sp = math.cos(pitch), math.sin(pitch)
+    forward = np.array([-sy * cp, sp, -cy * cp])
+    right = np.cross(forward, [0.0, 1.0, 0.0])
+    norm = np.linalg.norm(right)
+    right = right / norm if norm > 1e-6 else np.array([1.0, 0.0, 0.0])
+    up = np.cross(right, forward)
+    return [round(v, 6) for v in (*right, *up)]
+
+
+def nearest_indices(query_times, ref_times) -> np.ndarray:
+    """Index of the nearest ``ref_times`` entry for each ``query_times`` entry.
+
+    Both sequences must be sorted ascending.  Same forward-only two-pointer sweep
+    as ``_match_actions_to_frames`` (O(n+m)), but keeps the *nearest* reference and
+    always returns exactly ``len(query_times)`` indices, clamping past the ends.
+    """
+    n_ref = len(ref_times)
+    if n_ref == 0:
+        raise ValueError("ref_times is empty")
+    out = np.empty(len(query_times), dtype=np.int64)
+    j = 0
+    for i, t in enumerate(query_times):
+        while j + 1 < n_ref and ref_times[j + 1] <= t:
+            j += 1
+        if j + 1 < n_ref and abs(ref_times[j + 1] - t) < abs(ref_times[j] - t):
+            out[i] = j + 1
+        else:
+            out[i] = j
+    return out
+
+
+def voxel_stream_for_actions(actions_path: Path) -> Optional[Path]:
+    """Find the voxel stream paired with an action file by episode/bot/instance.
+
+    Action and voxel files share the ``{episode}_{bot}_instance_{id}`` suffix but
+    carry independent timestamp prefixes, so they are matched on that suffix.
+    """
+    parts = actions_path.stem.split("_", 2)  # date, time, {ep}_{bot}_instance_{id}
+    if len(parts) < 3:
+        return None
+    matches = sorted(actions_path.parent.glob(f"*_{parts[2]}_voxels.bin.gz"))
+    return matches[0] if matches else None
+
+
+def voxel_timestep_count(npz_path: Path) -> int:
+    """Number of aligned timesteps stored in a voxel ``.npz`` (reads one array)."""
+    with np.load(npz_path) as data:
+        return int(data["action_time_sec"].shape[0])
+
+
+def write_voxel_and_camera_state(
+    actions_path: Path, n_matched: int, output_dir: Path
+) -> Optional[Dict[str, Any]]:
+    """Write the aligned voxel ``.npz`` and camera-state JSON for one episode.
+
+    Returns a small summary dict, or ``None`` if the episode has no voxel stream.
+    """
+    stream_path = voxel_stream_for_actions(actions_path)
+    if stream_path is None:
+        return None
+
+    matched = _load_actions(actions_path)[:n_matched]
+    if not matched:
+        return None
+    action_times = np.array([float(a["epochTime"]) for a in matched], dtype=np.float64)
+
+    stream = voxel_io.read_stream(stream_path)
+    if stream.epochs.size == 0:
+        return None
+    voxel_times = stream.epochs.astype(np.float64) / 1000.0  # ms -> s
+
+    idx = nearest_indices(action_times, voxel_times)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    voxels_path = output_dir / f"{actions_path.stem}_voxels.npz"
+    np.savez_compressed(
+        voxels_path,
+        grids=stream.grids[idx],
+        origins=stream.origins[idx],
+        voxel_epoch_ms=stream.epochs[idx],
+        action_time_sec=action_times,
+        voxel_delta_sec=voxel_times[idx] - action_times,
+        grid_size=np.int64(stream.grid_size),
+        mc_version=stream.mc_version or "",
+    )
+
+    camera_state = [
+        {
+            "position": [float(a["x"]), float(a["y"]), float(a["z"])],
+            "rotation_6d": yaw_pitch_to_rot6d(float(a["yaw"]), float(a["pitch"])),
+            "fov": _CAMERA_FOV_DEGREES,
+        }
+        for a in matched
+    ]
+    camera_path = output_dir / f"{actions_path.stem}_camera_state.json"
+    with camera_path.open("w", encoding="utf-8") as fh:
+        json.dump(camera_state, fh)
+
+    return {
+        "voxels_path": str(voxels_path),
+        "camera_state_path": str(camera_path),
+        "timesteps": int(idx.size),
+        "max_abs_delta_sec": float(np.max(np.abs(voxel_times[idx] - action_times))),
+    }
+
+
 @dataclass
 class BotConfig:
     name: str
@@ -681,6 +817,20 @@ def process_actions(
         with output_meta.open("w", encoding="utf-8") as fh:
             json.dump(metadata, fh)
 
+        # Carry voxels (W) and camera state (C) when the episode recorded voxels.
+        try:
+            voxel_summary = write_voxel_and_camera_state(
+                actions_path, len(metadata["frame_mapping"]), config.output_dir
+            )
+            if voxel_summary is not None:
+                print(
+                    f"[voxels] wrote {voxel_summary['voxels_path']} "
+                    f"({voxel_summary['timesteps']} steps, "
+                    f"max |delta|: {voxel_summary['max_abs_delta_sec']*1000:.1f}ms)"
+                )
+        except Exception as exc:  # noqa: BLE001 - never fail the existing pipeline
+            print(f"[voxels] failed for {actions_path}: {exc}", file=sys.stderr)
+
         print(
             f"[align] wrote {metadata['aligned_video_path']} (total: {align_time:.1f}s)"
         )
@@ -725,6 +875,20 @@ def process_single_episode(
 
         with output_meta.open("w", encoding="utf-8") as fh:
             json.dump(metadata, fh)
+
+        # Carry voxels (W) and camera state (C) when the episode recorded voxels.
+        try:
+            voxel_summary = write_voxel_and_camera_state(
+                episode_path, len(metadata["frame_mapping"]), config.output_dir
+            )
+            if voxel_summary is not None:
+                print(
+                    f"[voxels] wrote {voxel_summary['voxels_path']} "
+                    f"({voxel_summary['timesteps']} steps, "
+                    f"max |delta|: {voxel_summary['max_abs_delta_sec']*1000:.1f}ms)"
+                )
+        except Exception as exc:  # noqa: BLE001 - never fail the existing pipeline
+            print(f"[voxels] failed for {episode_path}: {exc}", file=sys.stderr)
 
         print(f"[align] wrote {metadata['aligned_video_path']} (total: {align_time:.1f}s)")
         return True
