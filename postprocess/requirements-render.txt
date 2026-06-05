@@ -1,0 +1,22 @@
+# Extra dependencies for postprocess/render_first_person.py (first-person voxel
+# renderer). Kept SEPARATE from the core env so the base postprocess pipeline
+# runs without pytorch3d — render_first_person imports pytorch3d lazily.
+#
+# Install on a Linux GPU box (74/75/mondrian) in the SolarisEngine conda env.
+# torch must be pinned to a pytorch3d-supported version (the latest torch is too
+# new); then install the matching PREBUILT pytorch3d wheel (no source build).
+#
+# Example for CUDA 12.1 + Python 3.10 (adjust cu121/pyt241 to the box's CUDA and
+# the torch you install — check `nvidia-smi`):
+#
+#   pip install torch==2.4.1 --index-url https://download.pytorch.org/whl/cu121
+#   pip install --no-index pytorch3d \
+#     -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py310_cu121_pyt241/download.html
+#
+# Alternative that resolves a compatible stack automatically:
+#   conda install pytorch3d -c pytorch3d
+#
+# Record the exact working combo here once verified on the box:
+torch==2.4.1
+# pytorch3d  -> installed from the FAIR wheel index above (no plain PyPI wheel
+#               exists for this torch/CUDA/python combo).

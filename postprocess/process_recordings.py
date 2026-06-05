@@ -561,8 +561,10 @@ def align_recording(config: AlignmentInput) -> Dict[str, Any]:
 # When no voxel stream exists for the episode, nothing extra is written.
 # ---------------------------------------------------------------------------
 
-# Minecraft's default vertical field of view, in degrees.
-_CAMERA_FOV_DEGREES = 70.0
+# Camera field of view (degrees) stored per timestep in the camera-state.
+# 77 = 70 x 1.1 (MC's flying-camera FoV multiplier; the camera bot flies),
+# pixel-aligned empirically against the recording.
+_CAMERA_FOV_DEGREES = 77.0
 
 
 def yaw_pitch_to_rot6d(yaw: float, pitch: float) -> List[float]:
