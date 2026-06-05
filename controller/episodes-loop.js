@@ -49,6 +49,12 @@ const {
   PlaceAndMineEpisode,
 } = require("./episode-handlers/place-and-mine-episode");
 const {
+  RandomExploreEpisode,
+} = require("./episode-handlers/random-explore-episode");
+const {
+  WalkBackwardEpisode,
+} = require("./episode-handlers/walk-backward-episode");
+const {
   StructureEvalEpisode,
 } = require("./episode-handlers/eval/structure-eval-episode");
 const {
@@ -94,6 +100,8 @@ const episodeClassMap = {
   buildHouse: BuildHouseEpisode,
   collector: CollectorEpisode,
   placeAndMine: PlaceAndMineEpisode,
+  randomExplore: RandomExploreEpisode,
+  walkBackward: WalkBackwardEpisode,
   // Eval episodes:
   structureEval: StructureEvalEpisode,
   translationEval: TranslationEvalEpisode,

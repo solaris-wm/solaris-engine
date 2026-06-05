@@ -18,6 +18,8 @@ const episodeTypicalLengths = {
   buildHouse: 120,
   collector: 150,
   placeAndMine: 120,
+  randomExplore: 40,
+  walkBackward: 30,
   structureEval: 60,
   translationEval: 60,
   bothLookAwayEval: 60,
