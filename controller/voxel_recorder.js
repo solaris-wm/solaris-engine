@@ -9,28 +9,45 @@ const AIR_STATE_ID = 0;
 const HEADER_BYTES = 20;
 
 /**
- * Read a cube of block state ids of edge length `gridSize`, centred on the
- * block containing `center`.  Cells are ordered x outermost, z innermost,
- * matching the on-disk record layout.
+ * Capture a cube of block state ids of edge length `gridSize`, centred on the
+ * block containing `center`.  Resolves each overlapping chunk column once
+ * (`world.getColumn`) and reads its cells -- far cheaper than a per-cell world
+ * lookup.  Cells are ordered x outermost, z innermost, matching the on-disk
+ * record layout.
  *
- * @param {(x:number,y:number,z:number)=>number|null} readStateId - State id at
- *   a world cell, or null/undefined when the cell is unavailable.
+ * @param {*} world - prismarine-world sync World (provides `getColumn`).
  * @param {{x:number,y:number,z:number}} center - World position to centre on.
  * @param {number} gridSize - Cube edge length in blocks.
  * @returns {{origin:[number,number,number], cells:Uint16Array}}
  */
-function captureCube(readStateId, center, gridSize) {
+function captureCube(world, center, gridSize) {
   const half = Math.floor(gridSize / 2);
   const ox = Math.floor(center.x) - half;
   const oy = Math.floor(center.y) - half;
   const oz = Math.floor(center.z) - half;
-  const cells = new Uint16Array(gridSize * gridSize * gridSize);
-  let i = 0;
-  for (let x = 0; x < gridSize; x++) {
-    for (let y = 0; y < gridSize; y++) {
-      for (let z = 0; z < gridSize; z++) {
-        const stateId = readStateId(ox + x, oy + y, oz + z);
-        cells[i++] = stateId == null ? AIR_STATE_ID : stateId;
+  const g = gridSize;
+  const cells = new Uint16Array(g * g * g);
+  const pos = { x: 0, y: 0, z: 0 };
+  const cxMin = ox >> 4, cxMax = (ox + g - 1) >> 4;
+  const czMin = oz >> 4, czMax = (oz + g - 1) >> 4;
+  for (let cx = cxMin; cx <= cxMax; cx++) {
+    const wxLo = Math.max(ox, cx * 16);
+    const wxHi = Math.min(ox + g - 1, cx * 16 + 15);
+    for (let cz = czMin; cz <= czMax; cz++) {
+      const wzLo = Math.max(oz, cz * 16);
+      const wzHi = Math.min(oz + g - 1, cz * 16 + 15);
+      const col = world.getColumn(cx, cz);
+      for (let wx = wxLo; wx <= wxHi; wx++) {
+        pos.x = wx & 15; // chunk-local x (getBlockStateId expects posInChunk coords)
+        const lxg = (wx - ox) * g;
+        for (let wy = oy; wy < oy + g; wy++) {
+          pos.y = wy;
+          const base = (lxg + (wy - oy)) * g - oz;
+          for (let wz = wzLo; wz <= wzHi; wz++) {
+            pos.z = wz & 15; // chunk-local z
+            cells[base + wz] = col ? col.getBlockStateId(pos) : AIR_STATE_ID;
+          }
+        }
       }
     }
   }
@@ -94,18 +111,8 @@ function metaPathFor(streamPath) {
  * @returns {{start:(episodeNum:number)=>void, stop:()=>void}}
  */
 function makeVoxelRecorder(bot, args) {
-  const { Vec3 } = require("vec3");
-
   const gridSize = Number(args.voxel_grid);
   const intervalMs = Number(args.voxel_interval);
-  const cursor = new Vec3(0, 0, 0);
-  const readStateId = (x, y, z) => {
-    try {
-      return bot.world.getBlockStateId(cursor.set(x, y, z));
-    } catch (_) {
-      return null;
-    }
-  };
 
   let timer = null;
   let gzip = null;
@@ -113,7 +120,7 @@ function makeVoxelRecorder(bot, args) {
 
   function captureOnce() {
     if (!bot.entity || !bot.world) return;
-    const { origin, cells } = captureCube(readStateId, bot.entity.position, gridSize);
+    const { origin, cells } = captureCube(bot.world, bot.entity.position, gridSize);
     gzip.write(encodeRecord(Date.now(), origin, cells));
   }
 
