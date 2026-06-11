@@ -562,8 +562,7 @@ def align_recording(config: AlignmentInput) -> Dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 # Camera field of view (degrees) stored per timestep in the camera-state.
-# 77 = 70 x 1.1 (MC's flying-camera FoV multiplier; the camera bot flies),
-# pixel-aligned empirically against the recording.
+# The camera bot flies, so its FoV is 70 (MC base) x 1.1 (flying multiplier).
 _CAMERA_FOV_DEGREES = 77.0
 
 

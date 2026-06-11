@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""GPU voxel renderer -- first-person, isometric cube, or both.
+"""GPU voxel renderer -- agent-POV, isometric cube, or both.
 
 Renders the agent-centred voxel grid on the GPU (pytorch3d) one of three ways,
 selected with ``--mode``:
 
-  first-person : a perspective camera placed *inside* the world at the recorded
+  pov : a perspective camera placed *inside* the world at the recorded
       position, orientation and field of view -- what that camera would see.
       Side-by-side with the real camera video it is an alignment check: if the
       rendered voxels track the footage as the agent turns and walks, the voxel,
@@ -13,7 +13,7 @@ selected with ``--mode``:
       "god-view" of the cube, with the recorded camera's viewpoint drawn as a
       frustum so it is clear where the agent is looking.
   both : both of the above, written as two separate side-by-side files
-      (``--out`` is suffixed ``_firstperson`` / ``_cube``).
+      (``--out`` is suffixed ``_pov`` / ``_cube``).
 
 Both renderers share the same coloured-cube mesh, rasteriser, flat shader and
 edge outlining; only the camera (and a couple of per-mode extras) differ.  The
@@ -21,7 +21,7 @@ colour, geometry and video-IO helpers live here too; pytorch3d/torch are
 imported lazily (only the renderers need them), so this module imports and runs
 on machines without them.
 
-    python render_voxels.py --mode first-person --npz EP_voxels.npz \
+    python render_voxels.py --mode pov --npz EP_voxels.npz \
         --video EP_camera.mp4 --camera-state EP_camera_state.json --out EP_fp.mp4
     python render_voxels.py --mode both --npz EP_voxels.npz \
         --video EP_camera.mp4 --camera-state EP_camera_state.json --out EP_both.mp4
@@ -75,11 +75,10 @@ SWIM_EYE_HEIGHT = 0.4  # swimming / crawling / gliding pose
 # ---------------------------------------------------------------------------
 # First-person field of view
 # ---------------------------------------------------------------------------
-# pytorch3d FoVPerspectiveCameras `fov` (degrees) matched empirically to the
-# recorded camera (MC's 70-deg setting does not map 1:1 here). Overridable with
-# --fov; sprint widens it per-frame via fov_for_action().
-DEFAULT_FOV = 77.0  # 77 = 70 x 1.1 (MC's flying-camera FoV multiplier; the camera flies)
-SPRINT_FOV = 80.5   # 80.5 = 70 x 1.15 (MC's sprint FoV multiplier); applied per-frame while sprinting
+# pytorch3d FoVPerspectiveCameras `fov` (degrees). The recording camera flies
+# and only mirrors the controller's pose: its FoV is the constant flying value
+# and never picks up the player's sprint widening. Overridable with --fov.
+DEFAULT_FOV = 77.0  # 70 (MC base FoV) x 1.1 (flying-camera multiplier)
 
 # First-person background for "no voxel here" pixels (RGB, [0,1]): sky blue so
 # empty regions read as sky and the panel resembles the camera view.
@@ -144,8 +143,8 @@ def _base_color(state_id, names):
     if name in _KNOWN_BGR:
         return _KNOWN_BGR[name]  # None for air-likes -> caller skips
     # Hash on the block *name* (when a name table is given) so every state of a
-    # type shares one colour; hashing the state-id instead rainbow-coloured each
-    # orientation of e.g. leaves.  Fall back to the state-id with no name table.
+    # type shares one colour; hashing state ids would colour each orientation
+    # variant of a block differently.  Fall back to the id with no name table.
     h = zlib.crc32(name.encode("utf-8")) & 0xFFFFFF if name else (int(state_id) * 2654435761) & 0xFFFFFF
     # Bias away from very dark so blocks stay visible.
     return (80 + (h & 127), 80 + ((h >> 8) & 127), 80 + ((h >> 16) & 127))
@@ -238,7 +237,7 @@ def _read_video(path):
 
 
 # ---------------------------------------------------------------------------
-# Camera placement (first-person) + per-frame stance/FoV
+# Camera placement (agent POV) + per-frame stance/FoV
 # ---------------------------------------------------------------------------
 def _eye_at_up(state, origin, eye_height):
     """Camera ``(eye, at, up)`` in the cube's local frame (world - origin).
@@ -268,16 +267,6 @@ def eye_height_for_action(action):
     if (action.get("action") or {}).get("sneak"):
         return SNEAK_EYE_HEIGHT
     return DEFAULT_EYE_HEIGHT
-
-
-def fov_for_action(action):
-    """Camera FoV (degrees) for one frame: SPRINT_FOV while sprinting, else
-    DEFAULT_FOV.  Sprint comes from the nested action keymap
-    (``action['action']['sprint']``).
-    """
-    if (action.get("action") or {}).get("sprint"):
-        return SPRINT_FOV
-    return DEFAULT_FOV
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +339,7 @@ class _GpuVoxelRenderer:
 
     Holds the rasteriser, an overhead light and a flat shader, and provides the
     common ``mesh -> rasterise -> shade -> edge-outline`` core.  Subclasses build
-    the camera (perspective first-person vs orthographic isometric) and call
+    the camera (perspective POV vs orthographic isometric) and call
     ``_render_mesh``.
     """
 
@@ -414,7 +403,7 @@ class _GpuVoxelRenderer:
         return bgr
 
 
-class FirstPersonRenderer(_GpuVoxelRenderer):
+class PovRenderer(_GpuVoxelRenderer):
     """Perspective camera placed inside the world at the recorded camera pose."""
 
     def __init__(self, image_size, names, eye_height=DEFAULT_EYE_HEIGHT, fov=None):
@@ -437,9 +426,8 @@ class FirstPersonRenderer(_GpuVoxelRenderer):
             up=torch.as_tensor(up, dtype=torch.float32)[None],
             device=self.device,
         )
-        # FoV passed straight to pytorch3d (calibrated empirically against the
-        # camera; see DEFAULT_FOV). aspect_ratio stays 1.0 so the non-square image
-        # carries the aspect and blocks render square.
+        # aspect_ratio stays 1.0 so the non-square image carries the aspect and
+        # blocks render square.
         if fov is None:
             fov = self.fov_override if self.fov_override is not None else DEFAULT_FOV
         cameras = self.t.FoVPerspectiveCameras(
@@ -513,24 +501,24 @@ def main():
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser.add_argument("--mode", choices=["first-person", "cube", "both"], default="first-person",
-                        help="first-person perspective, isometric cube god-view, or both panels")
+    parser.add_argument("--mode", choices=["pov", "cube", "both"], default="pov",
+                        help="agent-POV perspective, isometric cube god-view, or both panels")
     parser.add_argument("--npz", required=True, type=Path, help="Aligned *_voxels.npz")
     parser.add_argument("--video", required=True, type=Path, help="Aligned camera .mp4")
     parser.add_argument("--out", required=True, type=Path, help="Output side-by-side .mp4")
     parser.add_argument("--camera-state", type=Path, default=None,
-                        help="Aligned *_camera_state.json (required for first-person/both; "
+                        help="Aligned *_camera_state.json (required for pov/both; "
                              "draws the frustum in cube mode)")
     parser.add_argument("--state-names", type=Path, default=None, help="JSON {stateId: name}")
     parser.add_argument("--max-frames", type=int, default=100000)
     parser.add_argument("--fps", type=float, default=20.0)
     parser.add_argument("--eye-height", type=float, default=DEFAULT_EYE_HEIGHT,
-                        help="(first-person) camera height above the recorded feet, in blocks.")
+                        help="(pov) camera height above the recorded feet, in blocks.")
     parser.add_argument("--fov", type=float, default=None,
-                        help="(first-person) override FoV in degrees; default per DEFAULT_FOV.")
+                        help="(pov) override FoV in degrees; default per DEFAULT_FOV.")
     args = parser.parse_args()
 
-    wants_fp = args.mode in ("first-person", "both")
+    wants_pov = args.mode in ("pov", "both")
     wants_cube = args.mode in ("cube", "both")
 
     data = np.load(args.npz)
@@ -540,7 +528,7 @@ def main():
         print(f"[render-voxels] auto-discovered state names: {state_names_path}")
     names = _load_names(state_names_path)
 
-    if wants_fp and not args.camera_state:
+    if wants_pov and not args.camera_state:
         raise SystemExit(f"--camera-state is required for --mode {args.mode}")
     camera_states = None
     if args.camera_state:
@@ -564,9 +552,9 @@ def main():
         return args.out.with_name(f"{args.out.stem}_{suffix}{args.out.suffix}") if split else args.out
 
     jobs = []  # (renderer, out_path)
-    if wants_fp:
-        jobs.append((FirstPersonRenderer((height, width), names, eye_height=args.eye_height, fov=args.fov),
-                     out_for("firstperson")))
+    if wants_pov:
+        jobs.append((PovRenderer((height, width), names, eye_height=args.eye_height, fov=args.fov),
+                     out_for("pov")))
     if wants_cube:
         jobs.append((IsometricRenderer((height, height), names),  # square god-view panel
                      out_for("cube")))

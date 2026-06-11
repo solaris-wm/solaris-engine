@@ -10,12 +10,20 @@ Takes either:
 2. A parent directory containing multiple subdirectories, each with the above structure.
    The script will automatically detect and process all subdirectories.
 
-For each N-player episode, this script:
-1. Annotates each bot's video with action overlays
-2. Vertically concatenates the N perspectives into a single video
+One mode runs per invocation; run the script once per desired output:
+
+- (no flags) For each N-player episode: annotate each bot's video with action
+  overlays, then vertically concatenate the N perspectives into a single video.
+- --voxel-cube: annotate each bot's video and append an isometric voxel-cube
+  panel (viewpoint drawn as a frustum); one ``*_voxel_cube.mp4`` per bot video.
+- --voxel-pov: annotate each bot's video and append a render of the voxels from
+  the recorded camera pose (needs pytorch3d); one ``*_voxel_pov.mp4`` per bot
+  video. When both voxel flags are given, --voxel-pov takes precedence.
 
 Usage:
     python annotate_video_batch.py /path/to/videos_dir [--workers N] [--output-dir DIR]
+    python annotate_video_batch.py /path/to/videos_dir --voxel-cube [--state-names JSON]
+    python annotate_video_batch.py /path/to/videos_dir --voxel-pov [--voxel-dir DIR]
     python annotate_video_batch.py /path/to/parent_dir  # Auto-detects subdirectories
 """
 
@@ -65,14 +73,14 @@ def parse_arguments():
         help="Limit the number of video pairs to process (default: no limit)",
     )
     parser.add_argument(
-        "--voxels",
+        "--voxel-cube",
         action="store_true",
-        help="Voxel mode: annotate each bot's video and append an isometric voxel-cube panel.",
+        help="Voxel cube mode: annotate each bot's video and append an isometric voxel-cube panel.",
     )
     parser.add_argument(
-        "--first-person",
+        "--voxel-pov",
         action="store_true",
-        help="First-person mode: annotate each bot's video and append a perspective render of "
+        help="Voxel POV mode: annotate each bot's video and append a perspective render of "
         "the voxels from the recorded camera pose (needs pytorch3d).",
     )
     parser.add_argument(
@@ -890,7 +898,7 @@ def find_voxel_npz(video_path: Path, voxel_dir: Optional[str]) -> Optional[Path]
     return cand if cand.exists() else None
 
 
-def process_voxel_video(
+def process_voxel_cube_video(
     video_path: Path,
     json_dir: Path,
     output_dir: Path,
@@ -937,14 +945,14 @@ def process_voxel_video(
         ]
 
         key = extract_video_key(video_path.name) or video_path.stem
-        output_path = output_dir / f"{key}_voxels.mp4"
+        output_path = output_dir / f"{key}_voxel_cube.mp4"
         concatenate_videos_vertically([combined], fps, output_path)
         return True, f"Created {output_path.name}"
     except Exception as e:  # noqa: BLE001
         return False, f"Error processing {video_path.name}: {e}"
 
 
-def process_voxel_videos_dir(
+def process_voxel_cube_videos_dir(
     videos_dir: Path,
     output_dir: Path,
     names: dict,
@@ -972,11 +980,11 @@ def process_voxel_videos_dir(
     with ThreadPoolExecutor(max_workers=workers) as executor:
         futures = {
             executor.submit(
-                process_voxel_video, v, json_dir, output_dir, names, voxel_dir
+                process_voxel_cube_video, v, json_dir, output_dir, names, voxel_dir
             ): v
             for v in videos
         }
-        with tqdm(total=len(videos), desc="Voxel-annotating", unit="video") as pbar:
+        with tqdm(total=len(videos), desc="Voxel-cube annotating", unit="video") as pbar:
             for future in as_completed(futures):
                 ok, msg = future.result()
                 successful += int(ok)
@@ -987,8 +995,8 @@ def process_voxel_videos_dir(
     return successful, failed, failures
 
 
-def run_voxel_annotation(videos_dir: Path, args, names: dict) -> None:
-    """Top-level --voxels flow; handles a single videos dir or a parent of them."""
+def run_voxel_cube_annotation(videos_dir: Path, args, names: dict) -> None:
+    """Top-level --voxel-cube flow; handles a single videos dir or a parent of them."""
     subdirs = discover_subdirectories(videos_dir)
     is_parent = len(subdirs) > 0 and not is_valid_videos_dir(videos_dir)
     targets = subdirs if is_parent else [videos_dir]
@@ -1000,8 +1008,8 @@ def run_voxel_annotation(videos_dir: Path, args, names: dict) -> None:
             out = Path(args.output_dir) / vd.name if is_parent else Path(args.output_dir)
         else:
             out = vd / "annotated"
-        print(f"--- Voxel-annotating {vd.name} -> {out} ---")
-        ok, fail, msgs = process_voxel_videos_dir(
+        print(f"--- Voxel-cube annotating {vd.name} -> {out} ---")
+        ok, fail, msgs = process_voxel_cube_videos_dir(
             vd, out, names, args.workers, args.voxel_dir, args.limit
         )
         total_ok += ok
@@ -1009,7 +1017,7 @@ def run_voxel_annotation(videos_dir: Path, args, names: dict) -> None:
         all_failures.extend(msgs)
 
     print(f"\n{'=' * 60}")
-    print(f"Voxel annotation complete: {total_ok} successful, {total_fail} failed")
+    print(f"Voxel-cube annotation complete: {total_ok} successful, {total_fail} failed")
     for msg in all_failures[:10]:
         print(f"  - {msg}")
     print(f"{'=' * 60}")
@@ -1026,17 +1034,17 @@ def find_camera_state(video_path: Path, voxel_dir: Optional[str]) -> Optional[Pa
     return cand if cand.exists() else None
 
 
-def process_first_person_video(
+def process_voxel_pov_video(
     video_path: Path,
     json_dir: Path,
     output_dir: Path,
     names: dict,
     voxel_dir: Optional[str],
 ) -> Tuple[bool, str]:
-    """Annotate one bot's video and append a first-person render of the voxels,
-    with the camera placed at the recorded pose inside the voxel grid."""
+    """Annotate one bot's video and append a render of the voxels from the
+    recorded camera pose inside the voxel grid."""
     try:
-        from render_voxels import FirstPersonRenderer, eye_height_for_action, fov_for_action
+        from render_voxels import PovRenderer, eye_height_for_action
 
         bot = extract_player_type(video_path.name) or "Player"
         actions = load_action_data(get_json_path_for_video(video_path, json_dir))
@@ -1055,7 +1063,7 @@ def process_first_person_video(
             states = json.load(fh)
 
         annotated, fps, width, height = annotate_video_to_frames(video_path, actions, bot)
-        renderer = FirstPersonRenderer((height, width), names)
+        renderer = PovRenderer((height, width), names)
         n = min(len(annotated), grids.shape[0], origins.shape[0], len(states))
         combined: List[np.ndarray] = [
             cv2.hconcat([
@@ -1063,28 +1071,27 @@ def process_first_person_video(
                 renderer.render(
                     grids[i], origins[i], states[i],
                     eye_height=eye_height_for_action(actions[i]) if i < len(actions) else None,
-                    fov=fov_for_action(actions[i]) if i < len(actions) else None,
                 ),
             ])
             for i in range(n)
         ]
 
         key = extract_video_key(video_path.name) or video_path.stem
-        output_path = output_dir / f"{key}_firstperson.mp4"
+        output_path = output_dir / f"{key}_voxel_pov.mp4"
         concatenate_videos_vertically([combined], fps, output_path)
         return True, f"Created {output_path.name}"
     except Exception as e:  # noqa: BLE001
         return False, f"Error processing {video_path.name}: {e}"
 
 
-def process_first_person_videos_dir(
+def process_voxel_pov_videos_dir(
     videos_dir: Path,
     output_dir: Path,
     names: dict,
     voxel_dir: Optional[str] = None,
     limit: Optional[int] = None,
 ) -> Tuple[int, int, List[str]]:
-    """First-person-render each bot's video in a directory. Sequential: the
+    """POV-render each bot's video in a directory. Sequential: the
     pytorch3d renderer is on the GPU, so threads would contend rather than help."""
     output_dir.mkdir(parents=True, exist_ok=True)
     test_dir = videos_dir / "test"
@@ -1102,8 +1109,8 @@ def process_first_person_videos_dir(
 
     successful = failed = 0
     failures: List[str] = []
-    for v in tqdm(videos, desc="First-person rendering", unit="video"):
-        ok, msg = process_first_person_video(v, json_dir, output_dir, names, voxel_dir)
+    for v in tqdm(videos, desc="Voxel-POV rendering", unit="video"):
+        ok, msg = process_voxel_pov_video(v, json_dir, output_dir, names, voxel_dir)
         successful += int(ok)
         failed += int(not ok)
         if not ok:
@@ -1111,8 +1118,8 @@ def process_first_person_videos_dir(
     return successful, failed, failures
 
 
-def run_first_person_annotation(videos_dir: Path, args, names: dict) -> None:
-    """Top-level --first-person flow; mirrors run_voxel_annotation."""
+def run_voxel_pov_annotation(videos_dir: Path, args, names: dict) -> None:
+    """Top-level --voxel-pov flow; mirrors run_voxel_cube_annotation."""
     subdirs = discover_subdirectories(videos_dir)
     is_parent = len(subdirs) > 0 and not is_valid_videos_dir(videos_dir)
     targets = subdirs if is_parent else [videos_dir]
@@ -1124,8 +1131,8 @@ def run_first_person_annotation(videos_dir: Path, args, names: dict) -> None:
             out = Path(args.output_dir) / vd.name if is_parent else Path(args.output_dir)
         else:
             out = vd / "annotated"
-        print(f"--- First-person rendering {vd.name} -> {out} ---")
-        ok, fail, msgs = process_first_person_videos_dir(
+        print(f"--- Voxel-POV rendering {vd.name} -> {out} ---")
+        ok, fail, msgs = process_voxel_pov_videos_dir(
             vd, out, names, args.voxel_dir, args.limit
         )
         total_ok += ok
@@ -1133,7 +1140,7 @@ def run_first_person_annotation(videos_dir: Path, args, names: dict) -> None:
         all_failures.extend(msgs)
 
     print(f"\n{'=' * 60}")
-    print(f"First-person annotation complete: {total_ok} successful, {total_fail} failed")
+    print(f"Voxel-POV annotation complete: {total_ok} successful, {total_fail} failed")
     for msg in all_failures[:10]:
         print(f"  - {msg}")
     print(f"{'=' * 60}")
@@ -1147,17 +1154,17 @@ def main():
         print(f"Error: Videos directory not found: {videos_dir}")
         sys.exit(1)
 
-    if args.first_person or args.voxels:
+    if args.voxel_pov or args.voxel_cube:
         names_path = args.state_names or _find_state_names(
             Path(args.voxel_dir) if args.voxel_dir else videos_dir
         )
         if names_path and not args.state_names:
             print(f"[annotate] auto-discovered state names: {names_path}")
         names = load_state_names(names_path)
-        if args.first_person:
-            run_first_person_annotation(videos_dir, args, names)
+        if args.voxel_pov:
+            run_voxel_pov_annotation(videos_dir, args, names)
         else:
-            run_voxel_annotation(videos_dir, args, names)
+            run_voxel_cube_annotation(videos_dir, args, names)
         return
 
     # Check if this is a parent directory containing multiple video directories
