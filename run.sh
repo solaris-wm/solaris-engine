@@ -13,7 +13,7 @@ FILTER_WATER_EPISODES=true
 PLAYERS=(alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima mike november oscar papa quebec romeo sierra tango uniform victor whiskey xray yankee zulu)
 # Disable Advancements tracking and popups via spigot.yml
 DISABLE_ADVANCEMENTS=true
-ENCODER="h264_nvenc" # libx264 or h264_nvenc — used for camera recording and postprocess
+ENCODER="auto" # auto, libx264, or h264_nvenc — used for camera recording and postprocess
 POSTPROCESS_WORKERS=8
 SMOKE_TEST=0
 
@@ -84,7 +84,7 @@ while [[ $# -gt 0 ]]; do
       echo "  --dataset-name NAME    Dataset name (default: multiplayer)"
       echo "  --filter-water-episodes true|false  Filter water episodes (default: true)"
       echo "  --disable-advancements true|false   Disable advancement pop-ups via spigot.yml (default: true). When true, the controller bootstrap wait is overridden to 0 since popups cannot appear."
-      echo "  --encoder ENCODER      Video encoder for camera recording and postprocess: libx264 or h264_nvenc (default: h264_nvenc)"
+      echo "  --encoder ENCODER      Video encoder for camera recording and postprocess: auto, libx264, or h264_nvenc (default: auto). auto probes NVENC in the camera container and falls back to libx264 (postprocess uses libx264); libx264/h264_nvenc force both stages."
       echo "  --postprocess-workers N  Parallel postprocess workers (default: 8, max 8 for h264_nvenc)"
       echo "  --smoke-test 0|1       Run one episode per eligible type, alphabetical (default: 0). --num-episodes is ignored in smoke mode."
       echo "  -h, --help             Show this help"
@@ -113,6 +113,15 @@ fi
 if [[ "$ENCODER" == "h264_nvenc" ]] && [[ "$POSTPROCESS_WORKERS" -gt 8 ]]; then
   echo "Warning: h264_nvenc supports at most 8 concurrent sessions; capping --postprocess-workers from $POSTPROCESS_WORKERS to 8" >&2
   POSTPROCESS_WORKERS=8
+fi
+
+# With --encoder auto, no encoder flags are passed: the camera container probes
+# NVENC and falls back to libx264, and postprocess uses its libx264 default.
+ENCODER_ARGS=()
+POSTPROCESS_ENCODER_ARGS=()
+if [[ "$ENCODER" != "auto" ]]; then
+  ENCODER_ARGS=(--camera_encoder "$ENCODER")
+  POSTPROCESS_ENCODER_ARGS=(--encoder "$ENCODER")
 fi
 
 BASE_DATA_COLLECTION_DIR=$BASE_DATA_DIR/data_collection/train
@@ -147,7 +156,7 @@ for ((i=START_BATCH; i<NUM_BATCHES; i++)); do
         --viewer_rendering_disabled 1 \
         --gpu_mode egl \
         --disable_advancements "$DISABLE_ADVANCEMENTS" \
-        --camera_encoder "$ENCODER"
+        "${ENCODER_ARGS[@]}"
 
     python3 orchestrate.py start --build --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs" --num-players $NUM_PLAYERS
     python3 orchestrate.py status --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs" --num-players $NUM_PLAYERS
@@ -155,7 +164,7 @@ for ((i=START_BATCH; i<NUM_BATCHES; i++)); do
     python3 orchestrate.py stop --compose-dir "$COMPOSE_DIR" --num-players $NUM_PLAYERS
     # Fix Docker root-owned file permissions so re-runs and postprocessing work
     docker run --rm -v "$(pwd)/$BATCH_DIR:/workspace" alpine chown -R "$(id -u):$(id -g)" /workspace
-    python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers "$POSTPROCESS_WORKERS" --encoder "$ENCODER" --output-dir "$BATCH_DIR/aligned" --num-players $NUM_PLAYERS
+    python3 orchestrate.py postprocess --compose-dir "$COMPOSE_DIR" --workers "$POSTPROCESS_WORKERS" "${POSTPROCESS_ENCODER_ARGS[@]}" --output-dir "$BATCH_DIR/aligned" --num-players $NUM_PLAYERS
 done
 
 if [[ "$FILTER_WATER_EPISODES" == "true" ]]; then
