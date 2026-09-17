@@ -74,9 +74,19 @@ Training episodes
 .. js:autoclass:: episode-handlers/build-tower-episode.BuildTowerEpisode
    :members:
 
+.. _api-episode-buildTowerNp:
+
+.. js:autoclass:: episode-handlers/build-tower-np-episode.BuildTowerNpEpisode
+   :members:
+
 .. _api-episode-chase:
 
 .. js:autoclass:: episode-handlers/chase-episode.ChaseEpisode
+   :members:
+
+.. _api-episode-chaseNp:
+
+.. js:autoclass:: episode-handlers/chase-np-episode.ChaseNpEpisode
    :members:
 
 .. _api-episode-collector:
@@ -124,6 +134,11 @@ Training episodes
 .. js:autoclass:: episode-handlers/walk-look-episode.WalkLookEpisode
    :members:
 
+.. _api-episode-walkLookNp:
+
+.. js:autoclass:: episode-handlers/walk-look-np-episode.WalkLookNpEpisode
+   :members:
+
 .. _api-episode-walkLookAway:
 
 .. js:autoclass:: episode-handlers/walk-look-away-episode.WalkLookAwayEpisode
@@ -132,14 +147,34 @@ Training episodes
 Eval episodes
 ^^^^^^^^^^^^^
 
+.. _api-episode-backToBackTurnEval:
+
+.. js:autoclass:: episode-handlers/eval/back-to-back-turn-eval-episode.BackToBackTurnEvalEpisode
+   :members:
+
+.. _api-episode-blindTurnEval:
+
+.. js:autoclass:: episode-handlers/eval/blind-turn-eval-episode.BlindTurnEvalEpisode
+   :members:
+
 .. _api-episode-bothLookAwayEval:
 
 .. js:autoclass:: episode-handlers/eval/both-look-away-eval-episode.BothLookAwayEvalEpisode
    :members:
 
+.. _api-episode-divergentLookEval:
+
+.. js:autoclass:: episode-handlers/eval/divergent-look-eval-episode.DivergentLookEvalEpisode
+   :members:
+
 .. _api-episode-oneLooksAwayEval:
 
 .. js:autoclass:: episode-handlers/eval/one-looks-away-eval-episode.OneLooksAwayEvalEpisode
+   :members:
+
+.. _api-episode-parallelTurnEval:
+
+.. js:autoclass:: episode-handlers/eval/parallel-turn-eval-episode.ParallelTurnEvalEpisode
    :members:
 
 .. _api-episode-rotationEval:
@@ -165,6 +200,16 @@ Eval episodes
 .. _api-episode-turnToLookOppositeEval:
 
 .. js:autoclass:: episode-handlers/eval/turn-to-look-opposite-eval-episode.TurnToLookOppositeEvalEpisode
+   :members:
+
+.. _api-episode-wallOcclusionEval:
+
+.. js:autoclass:: episode-handlers/eval/wall-occlusion-eval-episode.WallOcclusionEvalEpisode
+   :members:
+
+.. _api-episode-wallWalkEval:
+
+.. js:autoclass:: episode-handlers/eval/wall-walk-eval-episode.WallWalkEvalEpisode
    :members:
 
 

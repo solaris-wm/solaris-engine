@@ -7,7 +7,7 @@ Episode Types
 Training
 --------
 
-Below are the 14 training episode types and what they do.
+Below are the 14 base training episode types plus three N-player variants. Most base episodes were authored when the engine was strictly 2-player and assume two participants ("one bot does X, the other observes"); they still run with ``--num-players 2``. The three episode types whose name ends in ``Np`` (``chaseNp``, ``walkLookNp``, ``buildTowerNp``) are explicit N-player generalisations of their base counterparts and accept any ``--num-players`` value.
 
 :js:class:`straightLineWalk <episode-handlers.straight-line-episode.StraightLineEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -22,6 +22,7 @@ Below are the 14 training episode types and what they do.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **What**: One bot runs away in a zig-zag pattern, and the other bot pursues it.
+- **Player count**: 2 only. See ``chaseNp`` for the N-player variant.
 - **Notable parameters**:
 
   - Chase duration: 5–15s.
@@ -29,6 +30,12 @@ Below are the 14 training episode types and what they do.
     from the chaser's initial position).
   - Chaser updates GoalNear roughly once per second and keeps the runner in view
     periodically.
+
+:js:class:`chaseNp <episode-handlers.chase-np-episode.ChaseNpEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: N-player generalisation of ``chase``. One bot is the runner; the remaining ``N-1`` bots all chase it. Same escape geometry as ``chase``; each chaser updates its own GoalNear independently.
+- **Player count**: any ``N >= 2``.
 
 :js:class:`orbit <episode-handlers.orbit-episode.OrbitEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -44,10 +51,18 @@ Below are the 14 training episode types and what they do.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **What**: The episode consists of iterations where one or both bots move in a random direction with just WASD actions in front of each other.
+- **Player count**: 2 only. See ``walkLookNp`` for the N-player variant.
 - **Notable parameters**:
 
   - Iterations per episode: 3.
   - Random-walk actions per iteration: 2–4.
+
+:js:class:`walkLookNp <episode-handlers.walk-look-np-episode.WalkLookNpEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: N-player generalisation of ``walkLook``. Same iteration structure: each iteration randomly picks a subset of bots to move with WASD while the others observe.
+- **Player count**: any ``N >= 2``.
+- **Notable parameters**: same as ``walkLook``.
 
 :js:class:`walkLookAway <episode-handlers.walk-look-away-episode.WalkLookAwayEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -98,12 +113,20 @@ Below are the 14 training episode types and what they do.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **What**: Both bots build a tall 1-block tower by jumping and placing blocks underneath themselves.
+- **Player count**: 2 only. See ``buildTowerNp`` for the N-player variant.
 - **Setup**: Gives blocks for building.
 - **Notable parameters**:
 
   - Spawn distance constraints: 8–15 blocks.
   - Tower height: 8–12 blocks.
   - Block type: ``oak_planks``.
+
+:js:class:`buildTowerNp <episode-handlers.build-tower-np-episode.BuildTowerNpEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: N-player generalisation of ``buildTower``. All ``N`` bots simultaneously jump-and-place towers; eye-contact aim is computed against the centroid of the other bots' eye positions so the gaze still looks intentional.
+- **Player count**: any ``N >= 2``.
+- **Notable parameters**: same as ``buildTower``.
 
 :js:class:`mine <episode-handlers.mine-episode.MineEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -164,7 +187,7 @@ Below are the 14 training episode types and what they do.
 Eval
 ----
 
-Below are the 7 eval episode types and what they do.
+Below are the 13 eval episode types and what they do. The first 7 are collected by :ref:`run_evals.sh <run-evals-sh>`; the newer pose-evaluation types (``divergentLookEval``, ``backToBackTurnEval``, ``blindTurnEval``, ``parallelTurnEval``, ``wallWalkEval``, ``wallOcclusionEval``) are collected by :ref:`run_new_evals.sh <run-new-evals-sh>`.
 
 :js:class:`structureEval <episode-handlers.eval.structure-eval-episode.StructureEvalEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -241,6 +264,70 @@ Below are the 7 eval episode types and what they do.
   - Camera speed: 30°/s for initial look, 90°/s for turn.
   - Minimum episode ticks: 300.
 
+
+:js:class:`divergentLookEval <episode-handlers.eval.divergent-look-eval-episode.DivergentLookEvalEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: Both bots face random divergent directions (no eye contact) and hold completely still for the whole episode; evaluates pose awareness for gaze-direction prediction. Runs in a normal (non-flat) world, restricted to sparse open biomes (deserts, snowy biomes, savannas, …) via ``ACCEPTED_BIOMES``.
+- **Notable parameters**:
+
+  - Spawn distance: 10–12 blocks.
+  - Minimum episode ticks: 300.
+
+:js:class:`backToBackTurnEval <episode-handlers.eval.back-to-back-turn-eval-episode.BackToBackTurnEvalEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: Both bots start facing random directions at least 60° off the toward-each-other axis (keeping the other bot out of the 54° half-FOV plus margin), then turn to face each other, each at its own random speed.
+- **Notable parameters**:
+
+  - Spawn distance: 10–12 blocks.
+  - Turn speed: 20–40°/s, sampled independently per bot.
+  - Starting yaw offset: sampled from [60°, 300°] off the facing axis.
+  - Minimum episode ticks: 300.
+
+:js:class:`blindTurnEval <episode-handlers.eval.blind-turn-eval-episode.BlindTurnEvalEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: One bot (the “blind” bot) starts facing 90° sideways and slowly turns to face the watcher; the watcher keeps looking at it. Evaluates single-bot turning prediction.
+- **Notable parameters**:
+
+  - Spawn distance: 10–12 blocks.
+  - Camera speed: 30°/s.
+  - Minimum episode ticks: 300.
+
+:js:class:`parallelTurnEval <episode-handlers.eval.parallel-turn-eval-episode.ParallelTurnEvalEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: Both bots start facing the same world direction (parallel gazes) and turn 90° to face each other. Evaluates symmetric turning prediction.
+- **Notable parameters**:
+
+  - Spawn distance: 10–12 blocks.
+  - Camera speed: 30°/s.
+  - Minimum episode ticks: 300.
+
+:js:class:`wallWalkEval <episode-handlers.eval.wall-walk-eval-episode.WallWalkEvalEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: A wall spawns between the bots. One bot (walker) navigates around the wall via waypoints to the other side while the other bot (observer) stands still. Name tags are hidden for the duration, so the wall genuinely occludes the walker from the observer's view.
+- **Notable parameters**:
+
+  - Wall size: 9×3 blocks.
+  - Camera speed: 30°/s.
+  - Waypoint timeout: 8 s.
+  - Minimum episode ticks: 300.
+
+:js:class:`wallOcclusionEval <episode-handlers.eval.wall-occlusion-eval-episode.WallOcclusionEvalEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: Same wall/walker/observer setup as ``wallWalkEval``, but both starting gazes are rotated 60° off the wall-perpendicular in the same rotational sense, yielding antiparallel gazes on a single axis. Name tags are deliberately kept visible, so the observer sees the walker's tag through the wall — the intended “occluded presence” signal.
+- **Notable parameters**:
+
+  - Wall size: 9×3 blocks.
+  - Gaze offset: 60° off the wall-perpendicular.
+  - Observer antiparallel hold: 80 ticks.
+  - Camera speed: 30°/s.
+  - Minimum episode ticks: 300.
+
 .. _adding-new-episode-type:
 
 Adding a new episode type
@@ -248,16 +335,26 @@ Adding a new episode type
 
 To add a new episode type:
 
-1. **Create the handler module** in `controller/episode-handlers/ <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episode-handlers>`_ (or
-   `controller/episode-handlers/eval/ <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episode-handlers/eval>`_ for eval episodes). The module must export a
+1. **Create the handler module** in ``controller/episode-handlers/`` (or
+   ``controller/episode-handlers/eval/`` for eval episodes). The module must export a
    class that extends :js:class:`episode-handlers.base-episode.BaseEpisode`.
 
-2. **Register the episode in** `controller/episodes-loop.js <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episodes-loop.js>`_:
+2. **Register the episode in** ``controller/episodes-loop.js``:
+
    - Add an entry to ``episodeClassMap`` mapping the episode type string (e.g. ``myNewEpisode``) to your class.
    - For eval episodes only: add your class to the ``evalEpisodeClasses`` array.
    - To include it in the default set when ``EPISODE_TYPES`` is unset, add the type string to ``defaultEpisodeTypes``.
 
-3. **Add a typical length** in `controller/utils/episode-weights.js <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/utils/episode-weights.js>`_: add your
+3. **Add a typical length** in ``controller/utils/episode-weights.js``: add your
    episode type key and a typical duration in seconds to ``episodeTypicalLengths``.
    This is used for weighted sampling (shorter episodes are sampled more often). If
    the type is missing, ``selectWeightedEpisodeType()`` will throw.
+
+4. **Declare eligibility via class statics** (all optional):
+
+   - ``WORKS_IN_NON_FLAT_WORLD = true`` — allows the episode to be scheduled in normal
+     (non-flat) worlds; by default episodes only run in flatland worlds.
+   - ``ACCEPTED_BIOMES = [...]`` — in normal worlds, restricts the episode to the listed
+     biomes; the teleport step re-rolls locations until an accepted biome is found.
+   - ``SUPPORTS_N_PLAYER = true`` — marks the episode as safe for more than 2 players;
+     with ``--num-players > 2`` only episode types carrying this flag are scheduled.
