@@ -34,6 +34,21 @@ RUN python -m pip install --upgrade pip setuptools wheel && \
 # Install all node deps (incl. github-pinned forks) from the committed lockfile.
 COPY package.json package-lock.json ./
 RUN npm ci
+# Install prismarine-viewer-colalab from a local clone instead of as a git dep.
+# npm builds git deps in an isolated temp dir (even under --ignore-scripts),
+# where the viewer's floating webpack ^5 devDependency resolves to webpack
+# 5.109.0 (2026-07-23) and breaks its install-time browser-bundle build with
+# resolver ENOENT errors on @ljharb/tsconfig; no override from this repo can
+# reach that temp dir. A local clone lets us pin webpack to 5.108.4. The sha is
+# the one the lockfile pinned while the viewer was still a git dependency.
+RUN set -eux; \
+  git clone https://github.com/georgysavva/prismarine-viewer-colalab /opt/prismarine-viewer-colalab; \
+  git -C /opt/prismarine-viewer-colalab checkout 4ed884d0c19f585efc12eeb9d80bada15d258b09; \
+  cd /opt/prismarine-viewer-colalab; \
+  npm pkg set devDependencies.webpack=5.108.4; \
+  npm install; \
+  cd /usr/src/app; \
+  npm install /opt/prismarine-viewer-colalab
 RUN set -eux; \
   PKG_DIR="node_modules/prismarine-viewer-colalab"; \
   mkdir -p "$PKG_DIR/public/textures/1.16.4/entity"; \

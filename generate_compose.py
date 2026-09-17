@@ -129,6 +129,7 @@ def generate_compose_config(
     # GPU settings
     gpu_device_id: Optional[int] = None,
     gpu_mode: str = "egl",
+    disable_nvenc: bool = False,
     # Eval options
     eval_time_set_day: int = 0,
     # Flatland options
@@ -375,6 +376,7 @@ def generate_compose_config(
                 "VNC_PASSWORD": "research",
                 "ENABLE_RECORDING": "1",
                 "RECORDING_PATH": f"/output/camera_{key}.mkv",
+                "DISABLE_NVENC": "1" if disable_nvenc else "0",
                 "RENDER_DISTANCE": render_distance,
                 "SIMULATION_DISTANCE": simulation_distance,
                 "GRAPHICS_MODE": graphics_mode,
@@ -677,7 +679,19 @@ def main():
         default=None,
         choices=["libx264", "h264_nvenc"],
         help="Video encoder for camera recording: libx264 (CPU) or h264_nvenc (NVIDIA GPU). "
-        "If unset, the container auto-detects based on ffmpeg capabilities.",
+        "If unset, the container probes NVENC with a one-frame test encode and "
+        "falls back to libx264 on GPUs without NVENC silicon (e.g. A100/H100).",
+    )
+    parser.add_argument(
+        "--disable_nvenc",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Force CPU (libx264) video encoding in camera containers. Normally "
+        "unnecessary: the camera entrypoint probes NVENC with a test encode and "
+        "falls back to CPU automatically on GPUs without NVENC silicon (e.g. "
+        "A100/H100). Use this to skip the probe or force CPU encoding; "
+        "equivalent to --camera_encoder libx264 (default: 0)",
     )
 
     args = parser.parse_args()
@@ -835,6 +849,7 @@ def main():
             # GPU settings
             gpu_device_id=gpu_device_id,
             gpu_mode=args.gpu_mode,
+            disable_nvenc=bool(args.disable_nvenc),
             # Eval options
             eval_time_set_day=args.eval_time_set_day,
             # Flatland options

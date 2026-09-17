@@ -134,6 +134,32 @@ GAME_PID=$!
 PIDS="$PIDS $GAME_PID"
 
 if [ "$ENABLE_RECORDING" = "1" ]; then
+  # Pick the video encoder. CAMERA_ENCODER, when set, forces the choice
+  # (h264_nvenc or libx264). Otherwise auto-detect: ffmpeg listing h264_nvenc
+  # only proves the encoder is compiled in — datacenter GPUs without NVENC
+  # silicon (A100, H100, A30) still fail at runtime, so probe with a one-frame
+  # test encode and fall back to CPU automatically. DISABLE_NVENC=1 skips the
+  # probe and forces CPU encoding.
+  VIDEO_ENCODER="libx264"
+  if [ -n "${CAMERA_ENCODER:-}" ]; then
+    VIDEO_ENCODER="$CAMERA_ENCODER"
+    echo "[client] Using explicitly requested encoder: ${VIDEO_ENCODER}"
+  elif [ "${DISABLE_NVENC:-0}" = "1" ]; then
+    echo "[client] NVENC disabled via DISABLE_NVENC=1; using CPU (libx264) encoding"
+  elif ! ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_nvenc; then
+    echo "[client] ffmpeg has no h264_nvenc support; using CPU (libx264) encoding"
+  elif ffmpeg -hide_banner -loglevel error -f lavfi -i color=black:s=192x192:r=10 \
+      -frames:v 1 -c:v h264_nvenc -f null - >/dev/null 2>&1; then
+    VIDEO_ENCODER="h264_nvenc"
+  else
+    echo "[client] ============================================================"
+    echo "[client] NVENC AUTO-DISABLED: h264_nvenc is compiled into ffmpeg but a"
+    echo "[client] test encode failed on this GPU (datacenter GPUs such as the"
+    echo "[client] A100/H100 have no NVENC hardware)."
+    echo "[client] Falling back to CPU (libx264) video encoding."
+    echo "[client] ============================================================"
+  fi
+
   # Small delay so the Minecraft window stabilizes before capturing.
   sleep "${RECORDING_DELAY:-5}"
   RECORDING_META_PATH=${RECORDING_META_PATH:-${RECORDING_PATH%.*}_meta.json}
@@ -154,6 +180,7 @@ if [ "$ENABLE_RECORDING" = "1" ]; then
   "display": "${DISPLAY}",
   "camera_name": "${CAMERA_NAME:-}",
   "gpu_mode": "${GPU_MODE}",
+  "video_encoder": "${VIDEO_ENCODER}",
   "wallclock_timestamps": true,
   "note": "MKV PTS values are absolute Unix epoch timestamps. Use ffprobe to extract per-frame times."
 }
@@ -173,16 +200,7 @@ EOF
   #                                            in the container (simplifies ffprobe
   #                                            extraction at postprocessing time).
 
-  # If CAMERA_ENCODER is unset, auto-detect based on what this ffmpeg build supports.
-  if [ -z "${CAMERA_ENCODER:-}" ]; then
-    if ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_nvenc; then
-      CAMERA_ENCODER="h264_nvenc"
-    else
-      CAMERA_ENCODER="libx264"
-    fi
-  fi
-
-  case "$CAMERA_ENCODER" in
+  case "$VIDEO_ENCODER" in
     h264_nvenc)
       echo "[client] Using NVENC hardware encoding (MKV) with wallclock timestamps"
       ffmpeg -hide_banner -loglevel info -y \
@@ -200,7 +218,7 @@ EOF
         -codec:v libx264 -preset veryfast -bf 0 -crf 17 -pix_fmt yuv420p "$RECORDING_PATH" &
       ;;
     *)
-      echo "[client] ERROR: unknown CAMERA_ENCODER='$CAMERA_ENCODER' (expected h264_nvenc or libx264)" >&2
+      echo "[client] ERROR: unknown CAMERA_ENCODER='$VIDEO_ENCODER' (expected h264_nvenc or libx264)" >&2
       exit 1
       ;;
   esac

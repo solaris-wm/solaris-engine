@@ -250,6 +250,107 @@ Action files (``*_Alpha_instance_*.json``, ``*_Bravo_instance_*.json``) contain 
 
 The array contains one such object per frame.
 
+.. _yaw-pitch-conventions:
+
+Yaw and pitch conventions
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``yaw``, ``pitch``, and ``action.camera`` fields are recorded in `Mineflayer <https://github.com/PrismarineJS/mineflayer>`_'s **internal** camera convention (radians), not Minecraft's native (Notchian) convention. ``action.camera`` is ``[Δyaw, Δpitch]`` relative to the previous recorded frame (shortest-arc for yaw), in the same units and convention.
+
+The internal convention matches standard 3D-math / OpenGL-style conventions (Y-up, −Z-forward, CCW positive yaw about +Y, positive pitch = looking up). Minecraft's wire protocol uses the opposite convention on both axes: 0 yaw = South (+Z), CW positive, and positive pitch = looking down.
+
+**Yaw**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 35
+
+   * -
+     - Internal (recorded)
+     - Notchian (Minecraft)
+   * - Units
+     - radians
+     - degrees
+   * - Range
+     - ``[0, 2π)``
+     - ``(-180°, 180°]`` typical
+   * - Zero direction
+     - North (−Z)
+     - South (+Z)
+   * - Rotation sense (viewed from +Y)
+     - CCW positive
+     - CW positive
+   * - North (−Z)
+     - ``0``
+     - ``180°``
+   * - East (+X)
+     - ``3π/2`` (≈ ``4.712``)
+     - ``-90°`` / ``270°``
+   * - South (+Z)
+     - ``π`` (≈ ``3.142``)
+     - ``0°``
+   * - West (−X)
+     - ``π/2`` (≈ ``1.571``)
+     - ``90°``
+
+**Pitch**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 25 35 35
+
+   * -
+     - Internal (recorded)
+     - Notchian (Minecraft)
+   * - Units
+     - radians
+     - degrees
+   * - Range
+     - ``[-π/2, π/2]``
+     - ``[-90°, 90°]``
+   * - Horizon
+     - ``0``
+     - ``0°``
+   * - Looking up
+     - positive (``+π/2`` = straight up)
+     - **negative** (``-90°`` = straight up)
+   * - Looking down
+     - negative (``-π/2`` = straight down)
+     - **positive** (``+90°`` = straight down)
+
+**Conversion functions**
+
+.. code-block:: javascript
+
+   const PI = Math.PI
+   const TO_DEG = 180 / PI
+   const TO_RAD = PI / 180
+
+   // Internal (radians) → Notchian (degrees)
+   function internalToNotchian (yawRad, pitchRad) {
+     let yawDeg = (PI - yawRad) * TO_DEG
+     // Normalize to (-180, 180]
+     yawDeg = ((yawDeg + 180) % 360 + 360) % 360 - 180
+     const pitchDeg = -pitchRad * TO_DEG
+     return [yawDeg, pitchDeg]
+   }
+
+   // Notchian (degrees) → internal (radians)
+   function notchianToInternal (yawDeg, pitchDeg) {
+     const raw = (PI - yawDeg * TO_RAD)
+     // Wrap to [0, 2π)
+     const yawRad = ((raw % (2 * PI)) + 2 * PI) % (2 * PI)
+     const pitchRad = -pitchDeg * TO_RAD
+     return [yawRad, pitchRad]
+   }
+
+These match the formulas used in ``mineflayer/lib/conversions.js`` (``toNotchianYaw``, ``fromNotchianYaw``, ``toNotchianPitch``, ``fromNotchianPitch``).
+
+For ``action.camera`` deltas, the ``π`` offset on yaw cancels under subtraction, but the reflection does not — internal yaw rotates CCW while Notchian rotates CW, so any delta flips sign when converting between conventions. Both axes flip:
+
+- ``Δyaw_notchian_deg  = -Δyaw_internal * 180/π``
+- ``Δpitch_notchian_deg = -Δpitch_internal * 180/π``
+
 .. _episode-info-file-format:
 
 Episode info file format
