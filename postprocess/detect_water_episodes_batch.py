@@ -420,7 +420,6 @@ def main():
     args = parser.parse_args()
 
     # Set number of workers
-    # num_workers = args.num_workers if args.num_workers else mp.cpu_count()
     num_workers = args.num_workers if args.num_workers else mp.cpu_count() // 4
     print(f"Using {num_workers} worker processes")
     print(f"Threshold: {args.threshold}")
