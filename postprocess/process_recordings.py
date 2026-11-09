@@ -264,8 +264,9 @@ def _build_ffmpeg_cmd(
     crf: int = 18,
 ) -> List[str]:
     """Build the ffmpeg command for the chosen encoder."""
+    # stderr is drained only after the last frame, so keep it quiet or it can fill the pipe and stall ffmpeg.
     cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-y", "-nostats", "-loglevel", "error",
         "-f", "rawvideo",
         "-pix_fmt", "bgr24",
         "-s", f"{width}x{height}",
