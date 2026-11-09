@@ -125,7 +125,7 @@ if [[ "$ENCODER" != "auto" ]]; then
 fi
 
 BASE_DATA_COLLECTION_DIR=$BASE_DATA_DIR/data_collection/train
-for ((i=START_BATCH; i<NUM_BATCHES; i++)); do
+for ((i=START_BATCH; i<START_BATCH+NUM_BATCHES; i++)); do
     BATCH_NAME="batch_$i"
     BATCH_DIR="$BASE_DATA_COLLECTION_DIR/$BATCH_NAME"
     COMPOSE_DIR="$BATCH_DIR/compose_configs"
