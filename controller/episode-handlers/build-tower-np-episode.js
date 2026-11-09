@@ -7,6 +7,8 @@ const { BaseEpisode } = require("./base-episode");
 const INITIAL_EYE_CONTACT_MS = 1500;
 const FINAL_EYE_CONTACT_MS = 1500;
 const CAMERA_SPEED_DEGREES_PER_SEC = 60;
+// Slowest eased 180° turn at 0.4x randomized speed is ~9.4 s; bound the post-build turn above that.
+const FINAL_LOOK_TIMEOUT_MS = 15000;
 const MIN_TOWER_HEIGHT = 8;
 const MAX_TOWER_HEIGHT = 12;
 const TOWER_BLOCK_TYPE = "oak_planks";
@@ -108,7 +110,11 @@ function getOnBuildTowerPhaseFn(
 
     console.log(`[${bot.username}] 👀 Final eye contact...`);
     try {
-      await lookAtSmooth(bot, finalTarget, CAMERA_SPEED_DEGREES_PER_SEC);
+      // Leftover place attempts from the tower build can leave the eased look unresolved forever.
+      await Promise.race([
+        lookAtSmooth(bot, finalTarget, CAMERA_SPEED_DEGREES_PER_SEC),
+        sleep(FINAL_LOOK_TIMEOUT_MS),
+      ]);
       await sleep(FINAL_EYE_CONTACT_MS);
     } catch (lookError) {
       console.log(

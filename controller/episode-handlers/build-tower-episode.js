@@ -9,6 +9,8 @@ const { BaseEpisode } = require("./base-episode");
 const INITIAL_EYE_CONTACT_MS = 1500; // Initial look duration
 const FINAL_EYE_CONTACT_MS = 1500; // Final look duration
 const CAMERA_SPEED_DEGREES_PER_SEC = 60; // Gaze rotation speed
+// Slowest eased 180° turn at 0.4x randomized speed is ~9.4 s; bound the post-build turn above that.
+const FINAL_LOOK_TIMEOUT_MS = 15000;
 const MIN_TOWER_HEIGHT = 8; // Minimum tower height
 const MAX_TOWER_HEIGHT = 12; // Maximum tower height
 const TOWER_BLOCK_TYPE = "oak_planks"; // Block type for towers
@@ -115,7 +117,11 @@ function getOnBuildTowerPhaseFn(
       const otherEntity = bot.players[peerName]?.entity;
       if (otherEntity) {
         const targetPos = otherEntity.position;
-        await lookAtSmooth(bot, targetPos, CAMERA_SPEED_DEGREES_PER_SEC);
+        // Leftover place attempts from the tower build can leave the eased look unresolved forever.
+        await Promise.race([
+          lookAtSmooth(bot, targetPos, CAMERA_SPEED_DEGREES_PER_SEC),
+          sleep(FINAL_LOOK_TIMEOUT_MS),
+        ]);
         await sleep(FINAL_EYE_CONTACT_MS);
       }
     } catch (lookError) {
