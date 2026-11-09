@@ -32,6 +32,7 @@ class BotCoordinator extends EventEmitter {
     this.server = null;
     this.executingEvents = new Map(); // unique key -> true; in-flight handler tracking for waitForAllPhasesToFinish
     this.eventCounter = 0; // monotonic; mints unique keys for executingEvents
+    this.pendingBarriers = new Set(); // release fns of syncAllPeers calls still waiting on peers
   }
 
   async setupConnections() {
@@ -218,13 +219,18 @@ class BotCoordinator extends EventEmitter {
 
   syncAllPeers(eventName, eventParams, episodeNum, { location }) {
     return new Promise((resolve) => {
+      const release = (peerMap) => {
+        this.pendingBarriers.delete(release);
+        resolve(peerMap);
+      };
+      this.pendingBarriers.add(release);
       this.exchangeWithPeers(
         eventName,
         eventParams,
         episodeNum,
         (peerMap) => {
           this.broadcastToPeers(eventName, eventParams, episodeNum, location);
-          resolve(peerMap);
+          release(peerMap);
         },
         { location },
       );
@@ -244,6 +250,9 @@ class BotCoordinator extends EventEmitter {
     const logIntervalMs = 2000;
 
     while (this.executingEvents.size > 0) {
+      // The episode has stopped, so a handler still blocked on a barrier will never
+      // hear from its peers (one errored or they moved on); let it run to completion.
+      for (const release of this.pendingBarriers) release(new Map());
       const now = Date.now();
 
       if (now - lastLogTime >= logIntervalMs) {
