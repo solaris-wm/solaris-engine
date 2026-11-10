@@ -8,7 +8,7 @@ Mineflayer it makes the bots engage in collaborative gameplay. The controller is
 An episode type represents a specific multiplayer scenario that the bots engage in. To ensure diversity and
 good coverage of various game mechanics, 
 it has a collection of :ref:`14 base training episode types <training-episode-types>` plus three N-player variants (``chaseNp``, ``walkLookNp``, ``buildTowerNp``).
-And to ensure a proper evaluation of the core multiplayer mechanics, it has a collection of separate :ref:`13 eval episode types <eval-episode-types>`.
+And to ensure a proper evaluation of the core multiplayer mechanics, it has a collection of separate :ref:`7 eval episode types <eval-episode-types>`.
 Each episode type specifies which player counts it supports — most base types are 2-player only, while the ``Np``-suffixed variants generalise to any ``N >= 2``.
 
 

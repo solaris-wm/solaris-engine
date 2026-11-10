@@ -25,12 +25,6 @@ const episodeTypicalLengths = {
   rotationEval: 60,
   turnToLookEval: 60,
   turnToLookOppositeEval: 60,
-  divergentLookEval: 60,
-  backToBackTurnEval: 60,
-  blindTurnEval: 60,
-  parallelTurnEval: 60,
-  wallWalkEval: 60,
-  wallOcclusionEval: 60,
 };
 
 /**

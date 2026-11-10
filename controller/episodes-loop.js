@@ -69,24 +69,6 @@ const {
 const {
   TurnToLookOppositeEvalEpisode,
 } = require("./episode-handlers/eval/turn-to-look-opposite-eval-episode");
-const {
-  DivergentLookEvalEpisode,
-} = require("./episode-handlers/eval/divergent-look-eval-episode");
-const {
-  BackToBackTurnEvalEpisode,
-} = require("./episode-handlers/eval/back-to-back-turn-eval-episode");
-const {
-  BlindTurnEvalEpisode,
-} = require("./episode-handlers/eval/blind-turn-eval-episode");
-const {
-  ParallelTurnEvalEpisode,
-} = require("./episode-handlers/eval/parallel-turn-eval-episode");
-const {
-  WallWalkEvalEpisode,
-} = require("./episode-handlers/eval/wall-walk-eval-episode");
-const {
-  WallOcclusionEvalEpisode,
-} = require("./episode-handlers/eval/wall-occlusion-eval-episode");
 const turnToLookEvalTpPoints = require("./episode-handlers/eval/turn-to-look-eval-episode-tp-points.json");
 
 /**
@@ -120,12 +102,6 @@ const episodeClassMap = {
   rotationEval: RotationEvalEpisode,
   turnToLookEval: TurnToLookEvalEpisode,
   turnToLookOppositeEval: TurnToLookOppositeEvalEpisode,
-  divergentLookEval: DivergentLookEvalEpisode,
-  backToBackTurnEval: BackToBackTurnEvalEpisode,
-  blindTurnEval: BlindTurnEvalEpisode,
-  parallelTurnEval: ParallelTurnEvalEpisode,
-  wallWalkEval: WallWalkEvalEpisode,
-  wallOcclusionEval: WallOcclusionEvalEpisode,
 };
 
 /**
@@ -141,12 +117,6 @@ const evalEpisodeClasses = [
   RotationEvalEpisode,
   TurnToLookEvalEpisode,
   TurnToLookOppositeEvalEpisode,
-  DivergentLookEvalEpisode,
-  BackToBackTurnEvalEpisode,
-  BlindTurnEvalEpisode,
-  ParallelTurnEvalEpisode,
-  WallWalkEvalEpisode,
-  WallOcclusionEvalEpisode,
 ];
 
 /**
@@ -192,12 +162,6 @@ const defaultEpisodeTypes = [
   "rotationEval",
   "turnToLookEval",
   "turnToLookOppositeEval",
-  "divergentLookEval",
-  "backToBackTurnEval",
-  "blindTurnEval",
-  "parallelTurnEval",
-  "wallWalkEval",
-  "wallOcclusionEval",
 ];
 
 const isCustomEpisodeTypes =
@@ -1075,25 +1039,6 @@ function getOnStartRecordingFn(
 }
 
 /**
- * Check whether the bot is in one of the accepted biomes.
- *
- * @param {*} rcon - RCON connection instance.
- * @param {string} botUsername - Bot username for the `execute at` command.
- * @param {string[]} acceptedBiomes - List of Minecraft biome IDs (without namespace).
- * @returns {Promise<{accepted: boolean, biome: string|null}>}
- */
-async function checkBiomeAccepted(rcon, botUsername, acceptedBiomes) {
-  for (const biome of acceptedBiomes) {
-    const cmd = `execute at ${botUsername} if biome ~ ~ ~ minecraft:${biome}`;
-    const result = await rcon.send(cmd);
-    if (result.startsWith("Test passed")) {
-      return { accepted: true, biome };
-    }
-  }
-  return { accepted: false, biome: null };
-}
-
-/**
  * Teleport both bots to a randomized location (or episode-specific fixed points).
  *
  * Uses `spreadplayers` to place both bots within the configured distance bounds.
@@ -1226,28 +1171,6 @@ async function teleport(
       }
       await sleep(1000);
     } else {
-      // Check biome filtering if the episode defines ACCEPTED_BIOMES
-      const acceptedBiomes = episodeInstance.constructor.ACCEPTED_BIOMES;
-      if (acceptedBiomes && args.world_type !== "flat") {
-        const { accepted, biome } = await checkBiomeAccepted(
-          rcon,
-          bot.username,
-          acceptedBiomes,
-        );
-        if (!accepted) {
-          console.log(
-            `[${bot.username}] Biome rejected at current location, retrying teleport`,
-          );
-          // Don't count biome rejections toward attemptsWithThisRadius —
-          // spreadplayers succeeded, we just need a different location.
-          // Use a longer sleep to avoid overwhelming the server with rapid teleports.
-          await sleep(3000);
-          continue;
-        }
-        console.log(
-          `[${bot.username}] Biome accepted: ${biome}`,
-        );
-      }
       success = true;
       await sleep(5000);
       break;

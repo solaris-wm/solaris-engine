@@ -147,34 +147,14 @@ Training episodes
 Eval episodes
 ^^^^^^^^^^^^^
 
-.. _api-episode-backToBackTurnEval:
-
-.. js:autoclass:: episode-handlers/eval/back-to-back-turn-eval-episode.BackToBackTurnEvalEpisode
-   :members:
-
-.. _api-episode-blindTurnEval:
-
-.. js:autoclass:: episode-handlers/eval/blind-turn-eval-episode.BlindTurnEvalEpisode
-   :members:
-
 .. _api-episode-bothLookAwayEval:
 
 .. js:autoclass:: episode-handlers/eval/both-look-away-eval-episode.BothLookAwayEvalEpisode
    :members:
 
-.. _api-episode-divergentLookEval:
-
-.. js:autoclass:: episode-handlers/eval/divergent-look-eval-episode.DivergentLookEvalEpisode
-   :members:
-
 .. _api-episode-oneLooksAwayEval:
 
 .. js:autoclass:: episode-handlers/eval/one-looks-away-eval-episode.OneLooksAwayEvalEpisode
-   :members:
-
-.. _api-episode-parallelTurnEval:
-
-.. js:autoclass:: episode-handlers/eval/parallel-turn-eval-episode.ParallelTurnEvalEpisode
    :members:
 
 .. _api-episode-rotationEval:
@@ -200,16 +180,6 @@ Eval episodes
 .. _api-episode-turnToLookOppositeEval:
 
 .. js:autoclass:: episode-handlers/eval/turn-to-look-opposite-eval-episode.TurnToLookOppositeEvalEpisode
-   :members:
-
-.. _api-episode-wallOcclusionEval:
-
-.. js:autoclass:: episode-handlers/eval/wall-occlusion-eval-episode.WallOcclusionEvalEpisode
-   :members:
-
-.. _api-episode-wallWalkEval:
-
-.. js:autoclass:: episode-handlers/eval/wall-walk-eval-episode.WallWalkEvalEpisode
    :members:
 
 

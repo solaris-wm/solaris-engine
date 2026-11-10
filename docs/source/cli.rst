@@ -4,7 +4,7 @@ CLI
 Entry Point
 -----------
 
-This page describes the main command-line entry points for data collection: ``run.sh`` (training data), ``run_evals.sh`` (evaluation data), and ``run_new_evals.sh`` (the newer pose-evaluation episode types).
+This page describes the main command-line entry points for data collection: ``run.sh`` (training data) and ``run_evals.sh`` (evaluation data).
 
 .. _run-sh:
 
@@ -474,66 +474,6 @@ Data is written under ``<output-dir>/``. The following tree shows the directory 
    * - ``datasets/eval/<eval_type>/``
      - Prepared eval datasets per type. Each ``<eval_type>`` has only a ``test/`` subdir; structure and file patterns mirror ``datasets/<dataset-name>/test/`` in :ref:`run.sh output layout <run-sh-output-layout>`. Produced by :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>`.
 
-.. _run-new-evals-sh:
-
-``run_new_evals.sh``
---------------------------------------------
-
-`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/run_new_evals.sh>`_
-
-Runs evaluation data collection for the newer pose-evaluation episode types. It works exactly like :ref:`run_evals.sh <run-evals-sh>` — one batch per eval type, each batch generating compose configs, starting Minecraft instances, collecting episodes, and postprocessing them — and finishes by preparing all batches into per-type evaluation datasets with :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>`.
-
-Usage
-~~~~~
-
-.. code-block:: bash
-
-   ./run_new_evals.sh [OPTIONS]
-
-Options
-~~~~~~~
-
-.. list-table::
-   :header-rows: 1
-   :widths: 25 15 60
-
-   * - Option
-     - Default
-     - Description
-   * - ``--output-dir DIR``
-     - ``output``
-     - Base data directory for outputs
-   * - ``--num-players N``
-     - ``2``
-     - Number of player bots per instance. Same semantics as the ``run.sh`` flag — each instance spawns ``N`` controller, camera, spectator, and ``act_recorder`` containers.
-   * - ``-h``, ``--help``
-     -
-     - Show usage and exit
-
-Environment
-~~~~~~~~~~~
-
-- ``EVAL_TIME_SET_DAY`` — If set (e.g. ``1``), episode start time is set to day for all eval episodes. Default: ``1``.
-
-Eval episode types
-~~~~~~~~~~~~~~~~~~
-
-The script runs one batch per eval type:
-
-- ``divergentLookEval``
-- ``backToBackTurnEval``
-- ``blindTurnEval``
-- ``parallelTurnEval``
-- ``wallWalkEval``
-- ``wallOcclusionEval``
-
-Each type collects 16 episodes on 2 instances. ``divergentLookEval`` uses 2 normal worlds (it teleports the bots into sparse accepted biomes); every other type uses 2 flatland worlds. See :ref:`Eval episode types <eval-episode-types>` for what each episode does.
-
-Output layout
-~~~~~~~~~~~~~
-
-Identical to the :ref:`run_evals.sh <run-evals-sh>` layout: raw batches under ``<output-dir>/data_collection/eval/<eval_type>/`` and prepared datasets under ``<output-dir>/datasets/eval/<eval_type>/test/``.
-
 Postprocessing
 --------------
 
@@ -802,50 +742,6 @@ Options
    * - ``--destination-dir PATH``
      - (required)
      - Output directory for prepared eval datasets.
-
-.. _compute-eval-ids-py:
-
-``compute_eval_ids.py``
------------------------
-
-`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/compute_eval_ids.py>`_
-
-Computes per-episode eval windows (``eval_ids.json``) for each eval type under a prepared eval root (the ``datasets/eval/`` directory produced by :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>`). Bot names are auto-detected per eval type from the ``*_camera.mp4`` filenames, so any player count (``N ≥ 1``) is supported. For each episode, the eval window starts at the last frame of the first consecutive chunk of ``sneak`` actions (plus a fixed post-sneak delay), taken from whichever bot's marker has the latest ``renderTime``; each bot's own timeline is then bisected against that shared start time.
-
-Each record in ``eval_ids.json`` is a positional tuple ``(episode_id, bot_A_start, bot_A_end, bot_B_start, bot_B_end, ...)`` in alphabetical bot-name order (the order is logged per eval type).
-
-Usage
-~~~~~
-
-.. code-block:: bash
-
-   python postprocess/compute_eval_ids.py EVAL_ROOT [OPTIONS]
-
-Options
-~~~~~~~
-
-.. list-table::
-   :header-rows: 1
-   :widths: 30 15 55
-
-   * - Option
-     - Default
-     - Description
-   * - ``eval_root``
-     - (required)
-     - Parent directory whose subdirectories are eval types, each containing a ``test/`` dir (e.g. ``datasets/eval/``).
-   * - ``--dest-dir PATH``
-     - in‑place
-     - If given, each full ``<eval_type>/`` tree is copied into ``<dest-dir>/<eval_type>/`` and ``eval_ids.json`` is written there, producing a self-contained packaged dataset. If omitted, ``eval_ids.json`` is written in place next to each type's ``test/`` dir (``eval_root`` must be writable).
-   * - ``--num-frames N``
-     - ``257``
-     - Length of the eval window written into each record as ``end_idx = start_idx + num_frames``. An episode shorter than the window is treated as a data error.
-   * - ``--bots NAMES``
-     - auto‑detect
-     - Comma-separated bot names (e.g. ``Alpha,Bravo,Charlie``). If omitted, bots are auto-detected per eval type from ``*_camera.mp4`` filenames.
-   * - ``--force``
-     - off
-     - Bypass safety refusals: allow writing into an existing ``--dest-dir`` and overwrite pre-existing ``eval_ids.json`` files.
 
 .. _annotate-video-batch-py:
 

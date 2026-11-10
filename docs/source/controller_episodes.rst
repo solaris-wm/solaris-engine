@@ -187,7 +187,7 @@ Below are the 14 base training episode types plus three N-player variants. Most 
 Eval
 ----
 
-Below are the 13 eval episode types and what they do. The first 7 are collected by :ref:`run_evals.sh <run-evals-sh>`; the newer pose-evaluation types (``divergentLookEval``, ``backToBackTurnEval``, ``blindTurnEval``, ``parallelTurnEval``, ``wallWalkEval``, ``wallOcclusionEval``) are collected by :ref:`run_new_evals.sh <run-new-evals-sh>`.
+Below are the 7 eval episode types and what they do.
 
 :js:class:`structureEval <episode-handlers.eval.structure-eval-episode.StructureEvalEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -264,70 +264,6 @@ Below are the 13 eval episode types and what they do. The first 7 are collected 
   - Camera speed: 30°/s for initial look, 90°/s for turn.
   - Minimum episode ticks: 300.
 
-
-:js:class:`divergentLookEval <episode-handlers.eval.divergent-look-eval-episode.DivergentLookEvalEpisode>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- **What**: Both bots face random divergent directions (no eye contact) and hold completely still for the whole episode; evaluates pose awareness for gaze-direction prediction. Runs in a normal (non-flat) world, restricted to sparse open biomes (deserts, snowy biomes, savannas, …) via ``ACCEPTED_BIOMES``.
-- **Notable parameters**:
-
-  - Spawn distance: 10–12 blocks.
-  - Minimum episode ticks: 300.
-
-:js:class:`backToBackTurnEval <episode-handlers.eval.back-to-back-turn-eval-episode.BackToBackTurnEvalEpisode>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- **What**: Both bots start facing random directions at least 60° off the toward-each-other axis (keeping the other bot out of the 54° half-FOV plus margin), then turn to face each other, each at its own random speed.
-- **Notable parameters**:
-
-  - Spawn distance: 10–12 blocks.
-  - Turn speed: 20–40°/s, sampled independently per bot.
-  - Starting yaw offset: sampled from [60°, 300°] off the facing axis.
-  - Minimum episode ticks: 300.
-
-:js:class:`blindTurnEval <episode-handlers.eval.blind-turn-eval-episode.BlindTurnEvalEpisode>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- **What**: One bot (the “blind” bot) starts facing 90° sideways and slowly turns to face the watcher; the watcher keeps looking at it. Evaluates single-bot turning prediction.
-- **Notable parameters**:
-
-  - Spawn distance: 10–12 blocks.
-  - Camera speed: 30°/s.
-  - Minimum episode ticks: 300.
-
-:js:class:`parallelTurnEval <episode-handlers.eval.parallel-turn-eval-episode.ParallelTurnEvalEpisode>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- **What**: Both bots start facing the same world direction (parallel gazes) and turn 90° to face each other. Evaluates symmetric turning prediction.
-- **Notable parameters**:
-
-  - Spawn distance: 10–12 blocks.
-  - Camera speed: 30°/s.
-  - Minimum episode ticks: 300.
-
-:js:class:`wallWalkEval <episode-handlers.eval.wall-walk-eval-episode.WallWalkEvalEpisode>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- **What**: A wall spawns between the bots. One bot (walker) navigates around the wall via waypoints to the other side while the other bot (observer) stands still. Name tags are hidden for the duration, so the wall genuinely occludes the walker from the observer's view.
-- **Notable parameters**:
-
-  - Wall size: 9×3 blocks.
-  - Camera speed: 30°/s.
-  - Waypoint timeout: 8 s.
-  - Minimum episode ticks: 300.
-
-:js:class:`wallOcclusionEval <episode-handlers.eval.wall-occlusion-eval-episode.WallOcclusionEvalEpisode>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-- **What**: Same wall/walker/observer setup as ``wallWalkEval``, but both starting gazes are rotated 60° off the wall-perpendicular in the same rotational sense, yielding antiparallel gazes on a single axis. Name tags are deliberately kept visible, so the observer sees the walker's tag through the wall — the intended “occluded presence” signal.
-- **Notable parameters**:
-
-  - Wall size: 9×3 blocks.
-  - Gaze offset: 60° off the wall-perpendicular.
-  - Observer antiparallel hold: 80 ticks.
-  - Camera speed: 30°/s.
-  - Minimum episode ticks: 300.
-
 .. _adding-new-episode-type:
 
 Adding a new episode type
@@ -354,7 +290,5 @@ To add a new episode type:
 
    - ``WORKS_IN_NON_FLAT_WORLD = true`` — allows the episode to be scheduled in normal
      (non-flat) worlds; by default episodes only run in flatland worlds.
-   - ``ACCEPTED_BIOMES = [...]`` — in normal worlds, restricts the episode to the listed
-     biomes; the teleport step re-rolls locations until an accepted biome is found.
    - ``SUPPORTS_N_PLAYER = true`` — marks the episode as safe for more than 2 players;
      with ``--num-players > 2`` only episode types carrying this flag are scheduled.
