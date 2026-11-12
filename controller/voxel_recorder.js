@@ -141,7 +141,7 @@ function makeVoxelRecorder(bot, args) {
     timer = null;
     gzip.end();
     gzip = null;
-    const meta = { grid_size: gridSize, mc_version: args.mc_version };
+    const meta = { grid_size: gridSize, mc_version: String(args.mc_version) };
     fs.writeFileSync(metaPathFor(streamPath), JSON.stringify(meta));
     console.log(`[${bot.username}] Stopped voxel recording: ${streamPath}`);
   }
