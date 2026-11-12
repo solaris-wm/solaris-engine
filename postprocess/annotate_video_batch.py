@@ -15,7 +15,8 @@ One mode runs per invocation; run the script once per desired output:
 - (no flags) For each N-player episode: annotate each bot's video with action
   overlays, then vertically concatenate the N perspectives into a single video.
 - --voxel-cube: annotate each bot's video and append an isometric voxel-cube
-  panel (viewpoint drawn as a frustum); one ``*_voxel_cube.mp4`` per bot video.
+  panel (viewpoint drawn as a frustum, needs pytorch3d); one
+  ``*_voxel_cube.mp4`` per bot video.
 - --voxel-pov: annotate each bot's video and append a render of the voxels from
   the recorded camera pose (needs pytorch3d); one ``*_voxel_pov.mp4`` per bot
   video. When both voxel flags are given, --voxel-pov takes precedence.
@@ -75,7 +76,7 @@ def parse_arguments():
     parser.add_argument(
         "--voxel-cube",
         action="store_true",
-        help="Voxel cube mode: annotate each bot's video and append an isometric voxel-cube panel.",
+        help="Voxel cube mode: annotate each bot's video and append an isometric voxel-cube panel (needs pytorch3d).",
     )
     parser.add_argument(
         "--voxel-pov",
