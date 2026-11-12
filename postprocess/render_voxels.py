@@ -211,7 +211,7 @@ def _frustum_corners(state, origin, eye_height, far):
 def _start_ffmpeg(out_path, width, height, fps):
     """Pipe raw BGR frames to ffmpeg, encoding H.264/yuv420p (broadly playable)."""
     cmd = [
-        "ffmpeg", "-y",
+        "ffmpeg", "-y", "-nostats", "-loglevel", "error",
         "-f", "rawvideo", "-pix_fmt", "bgr24",
         "-s", f"{width}x{height}", "-r", str(fps),
         "-i", "pipe:0",
