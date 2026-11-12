@@ -7,7 +7,7 @@ Episode Types
 Training
 --------
 
-Below are the 14 base training episode types plus three N-player variants. Most base episodes were authored when the engine was strictly 2-player and assume two participants ("one bot does X, the other observes"); they still run with ``--num-players 2``. The three episode types whose name ends in ``Np`` (``chaseNp``, ``walkLookNp``, ``buildTowerNp``) are explicit N-player generalisations of their base counterparts and accept any ``--num-players`` value.
+Below are the 14 base training episode types plus three N-player variants. The base episodes assume two participants ("one bot does X, the other observes") and run only with ``--num-players 2``. The three episode types whose name ends in ``Np`` (``chaseNp``, ``walkLookNp``, ``buildTowerNp``) are explicit N-player generalisations of their base counterparts; with more than 2 players they are the only types scheduled.
 
 :js:class:`straightLineWalk <episode-handlers.straight-line-episode.StraightLineEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -187,7 +187,7 @@ Below are the 14 base training episode types plus three N-player variants. Most 
 Eval
 ----
 
-Below are the 7 eval episode types and what they do.
+Below are the 7 eval episode types and what they do. All of them are 2-player only.
 
 :js:class:`structureEval <episode-handlers.eval.structure-eval-episode.StructureEvalEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

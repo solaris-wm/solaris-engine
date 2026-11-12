@@ -52,7 +52,7 @@ Options
      - Number of episodes per batch (ignored when ``--smoke-test 1``)
    * - ``--num-players N``
      - ``2``
-     - Number of player bots per instance. Each instance spawns ``N`` controller, camera, spectator, and ``act_recorder`` containers (plus a single Minecraft server). The NVENC encoder cap of 8 sessions/GPU also bounds the per-instance count: max ``floor(8 / N)`` instances. ``run.sh`` works out of the box for up to 3 players (skins are bundled for Alpha, Bravo, and Charlie); larger counts require calling :ref:`generate_compose.py <generate-compose-py>` directly with ``--skins``. With more than 2 players, only episode types that declare ``SUPPORTS_N_PLAYER`` are scheduled (currently ``chaseNp``, ``walkLookNp``, ``buildTowerNp``).
+     - Number of player bots per instance. Each instance spawns ``N`` controller, camera, spectator, and ``act_recorder`` containers (plus a single Minecraft server). The NVENC encoder cap of 8 sessions/GPU also bounds the per-instance count: max ``floor(8 / N)`` instances. ``run.sh`` works out of the box for up to 3 players (skins are bundled for Alpha, Bravo, and Charlie); 4 to 8 players are untested and require calling :ref:`generate_compose.py <generate-compose-py>` directly with ``--skins``; more than 8 is not supported. With more than 2 players, only episode types that declare ``SUPPORTS_N_PLAYER`` are scheduled (currently ``chaseNp``, ``walkLookNp``, ``buildTowerNp``).
    * - ``--dataset-name NAME``
      - ``multiplayer``
      - Name of the output dataset under ``<output-dir>/datasets/``
@@ -408,7 +408,7 @@ Options
      - Base data directory for outputs
    * - ``--num-players N``
      - ``2``
-     - Number of player bots per instance. Same semantics as the ``run.sh`` flag — each instance spawns ``N`` controller, camera, spectator, and ``act_recorder`` containers.
+     - Number of player bots per instance. All eval episode types are 2-player only, so leave this at ``2``.
    * - ``-h``, ``--help``
      -
      - Show usage and exit
@@ -851,7 +851,7 @@ Options
      - Shared output directory for controller/act_recorder episode outputs.
    * - ``--num_players N``
      - ``2``
-     - Number of player bots per instance. Capped at 26 (the length of the NATO phonetic series). Lengths of all per‑player list flags below must match this value.
+     - Number of player bots per instance, from 2 to 8: each player's camera takes one of the 8 NVENC sessions per GPU, and the instance count is capped at ``floor(8 / N)``. Lengths of all per‑player list flags below must match this value.
    * - ``--skins NAME [NAME ...]``
      - lookup by player name
      - One skin filename per player. When omitted, falls back to the project's default-skin lookup (Alpha, Bravo, Charlie are bundled; supplying ``--skins`` is required for ``--num_players > 3``).
