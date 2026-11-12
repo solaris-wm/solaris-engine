@@ -19,3 +19,9 @@ compose_configs/
 docs/build/
 docs/source/_build/
 node_modules/
+scratch/
+CLAUDE.md
+AGENTS.md
+.claude/
+tmp/
+.DS_Store

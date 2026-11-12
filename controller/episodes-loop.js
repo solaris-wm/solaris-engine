@@ -21,8 +21,12 @@ const {
   StraightLineEpisode,
 } = require("./episode-handlers/straight-line-episode");
 const { ChaseEpisode } = require("./episode-handlers/chase-episode");
+const { ChaseNpEpisode } = require("./episode-handlers/chase-np-episode");
 const { OrbitEpisode } = require("./episode-handlers/orbit-episode");
 const { WalkLookEpisode } = require("./episode-handlers/walk-look-episode");
+const {
+  WalkLookNpEpisode,
+} = require("./episode-handlers/walk-look-np-episode");
 const {
   WalkLookAwayEpisode,
 } = require("./episode-handlers/walk-look-away-episode");
@@ -31,6 +35,9 @@ const {
   BuildStructureEpisode,
 } = require("./episode-handlers/build-structure-episode");
 const { BuildTowerEpisode } = require("./episode-handlers/build-tower-episode");
+const {
+  BuildTowerNpEpisode,
+} = require("./episode-handlers/build-tower-np-episode");
 const { MineEpisode } = require("./episode-handlers/mine-episode");
 const { PveEpisode } = require("./episode-handlers/pve-episode");
 const {
@@ -72,13 +79,16 @@ const turnToLookEvalTpPoints = require("./episode-handlers/eval/turn-to-look-eva
 const episodeClassMap = {
   straightLineWalk: StraightLineEpisode,
   chase: ChaseEpisode,
+  chaseNp: ChaseNpEpisode,
   orbit: OrbitEpisode,
   walkLook: WalkLookEpisode,
+  walkLookNp: WalkLookNpEpisode,
   walkLookAway: WalkLookAwayEpisode,
   pvp: PvpEpisode,
   pve: PveEpisode,
   buildStructure: BuildStructureEpisode,
   buildTower: BuildTowerEpisode,
+  buildTowerNp: BuildTowerNpEpisode,
   mine: MineEpisode,
   towerBridge: TowerBridgeEpisode,
   buildHouse: BuildHouseEpisode,
@@ -130,14 +140,17 @@ function isEvalEpisode(episodeInstance) {
 const defaultEpisodeTypes = [
   "straightLineWalk",
   "chase",
+  "chaseNp",
   "orbit",
   "walkLook",
+  "walkLookNp",
   "buildHouse",
   "walkLookAway",
   "pvp",
   "pve",
   "buildStructure",
   "buildTower",
+  "buildTowerNp",
   "mine",
   "towerBridge",
   "collector",
@@ -274,7 +287,7 @@ async function runSingleEpisode(
       }
       episodeErrorHandled = true;
       episodeInstance._encounteredError = true;
-      await notifyPeerErrorAndStop(
+      notifyPeerErrorAndStop(
         bot,
         rcon,
         sharedBotRng,
@@ -345,8 +358,9 @@ async function runSingleEpisode(
       position: bot.entity.position.clone(),
     };
 
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "teleportPhase",
+      phaseDataOur,
       episodeNum,
       getOnTeleportPhaseFn(
         bot,
@@ -358,12 +372,7 @@ async function runSingleEpisode(
         args,
         phaseDataOur,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "teleportPhase",
-      phaseDataOur,
-      episodeNum,
-      "spawnPhase end",
+      { location: "spawnPhase end" },
     );
   });
 }
@@ -379,9 +388,9 @@ async function runSingleEpisode(
  * @param {*} episodeInstance - Episode instance.
  * @param {Object} args - Configuration args.
  * @param {unknown} error - Error value.
- * @returns {Promise<void>} Resolves when peer is notified and stop is scheduled.
+ * @returns {void}
  */
-async function notifyPeerErrorAndStop(
+function notifyPeerErrorAndStop(
   bot,
   rcon,
   sharedBotRng,
@@ -396,32 +405,26 @@ async function notifyPeerErrorAndStop(
     `[${bot.username}] Episode ${episodeNum} encountered an error:`,
     error,
   );
-  coordinator.sendToOtherBot(
+  coordinator.broadcastToPeers(
     `peerErrorPhase_${episodeNum}`,
     { reason },
     episodeNum,
     "error notifier",
   );
-  coordinator.onceEvent(
+  coordinator.exchangeWithPeers(
     "stopPhase",
+    bot.entity.position.clone(),
     episodeNum,
     episodeInstance.getOnStopPhaseFn(
       bot,
       rcon,
       sharedBotRng,
       coordinator,
-      args.other_bot_name,
       episodeNum,
       args,
     ),
+    { location: "error notifier end" },
   );
-  coordinator.sendToOtherBot(
-    "stopPhase",
-    bot.entity.position.clone(),
-    episodeNum,
-    `error notifier end`,
-  );
-  // Initiate our own stop sequence
 }
 
 /**
@@ -594,6 +597,7 @@ function getOnSpawnFn(bot, host, actRecorderPort, coordinator, args) {
         args.rcon_password,
         args.camera_ready_retries,
         args.camera_ready_check_interval,
+        coordinator.getAllPlayerNames().map((name) => `Camera${name}`),
       );
 
       if (!camerasReady) {
@@ -624,12 +628,18 @@ function getOnSpawnFn(bot, host, actRecorderPort, coordinator, args) {
     // Respect world type for eligible episode filtering
     const worldType = (args.world_type || "flat").toLowerCase();
     const isFlatWorld = worldType === "flat";
+    const needsNPlayerSupport = coordinator.getAllPlayerNames().length > 2;
     const allEpisodeTypes = episodeTypes;
-    const eligibleEpisodeTypesForWorld = isFlatWorld
+    const worldEligible = isFlatWorld
       ? allEpisodeTypes
       : allEpisodeTypes.filter(
           (type) => episodeClassMap[type].WORKS_IN_NON_FLAT_WORLD === true,
         );
+    const eligibleEpisodeTypesForWorld = needsNPlayerSupport
+      ? worldEligible.filter(
+          (type) => episodeClassMap[type].SUPPORTS_N_PLAYER === true,
+        )
+      : worldEligible;
 
     if (!isFlatWorld && eligibleEpisodeTypesForWorld.length === 0) {
       throw new Error(
@@ -638,19 +648,17 @@ function getOnSpawnFn(bot, host, actRecorderPort, coordinator, args) {
     }
     const sortedEligible = eligibleEpisodeTypesForWorld.slice().sort();
 
-    // In smoke test mode, iterate over all eligible episode types in alphabetical order
+    // In smoke test mode, run each eligible episode type exactly once in alphabetical order
     let episodesToRun = [];
     if (args.smoke_test === 1) {
-      // Cycle through eligible episode types until we reach episodes_num
-      for (let i = 0; i < args.episodes_num; i++) {
-        const episodeType = sortedEligible[i % sortedEligible.length];
+      for (let i = 0; i < sortedEligible.length; i++) {
         episodesToRun.push({
           episodeNum: args.start_episode_id + i,
-          episodeType: episodeType,
+          episodeType: sortedEligible[i],
         });
       }
       console.log(
-        `[${bot.username}] SMOKE TEST MODE: Running ${episodesToRun.length} episodes cycling through ${sortedEligible.length} eligible episode types (world_type=${worldType}) in alphabetical order`,
+        `[${bot.username}] SMOKE TEST MODE: Running ${episodesToRun.length} episodes (one per eligible type, world_type=${worldType}) in alphabetical order — --num-episodes (${args.episodes_num}) ignored`,
       );
     } else {
       // Normal mode: use the configured episodes_num, episode type picked at random from eligible
@@ -754,7 +762,12 @@ function getOnSpawnFn(bot, host, actRecorderPort, coordinator, args) {
         episodeType: selectedEpisodeType,
       });
       console.log(`[${bot.username}] Syncing bots for episode ${episodeNum}`);
-      await coordinator.syncBots(episodeNum);
+      await coordinator.syncAllPeers(
+        "syncBots",
+        {},
+        episodeNum,
+        { location: `episode ${episodeNum} end` },
+      );
       console.log(`[${bot.username}] Synced bots for episode ${episodeNum}`);
     }
     await rcon.end();
@@ -787,31 +800,36 @@ function getOnTeleportPhaseFn(
   args,
   phaseDataOur,
 ) {
-  return async (phaseDataOther) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    coordinator.broadcastToPeers(
       "teleportPhase",
       phaseDataOur,
       episodeNum,
       "teleportPhase beginning",
     );
-    const otherBotPosition = phaseDataOther.position;
     const ourPosition = phaseDataOur.position;
-    if (args.teleport && bot.username < args.other_bot_name) {
+    const allPositions = [
+      ourPosition,
+      ...Array.from(peerMap.values()).map((d) => d.position),
+    ];
+    const leaderName = coordinator.getAllPlayerNames()[0];
+    if (args.teleport && bot.username === leaderName) {
       console.log(`[${bot.username}] performs bots teleporting`);
       await teleport(
         bot,
         rcon,
         args,
-        ourPosition,
-        otherBotPosition,
+        coordinator,
+        allPositions,
         episodeInstance,
         sharedBotRng,
         episodeNum,
       );
     }
 
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "postTeleportPhase",
+      {},
       episodeNum,
       getOnPostTeleportPhaseFn(
         bot,
@@ -822,12 +840,7 @@ function getOnTeleportPhaseFn(
         episodeInstance,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "postTeleportPhase",
-      {},
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   };
 }
@@ -854,7 +867,7 @@ function getOnPostTeleportPhaseFn(
   args,
 ) {
   return async () => {
-    coordinator.sendToOtherBot(
+    coordinator.broadcastToPeers(
       "postTeleportPhase",
       {},
       episodeNum,
@@ -869,8 +882,9 @@ function getOnPostTeleportPhaseFn(
       )}`,
     );
 
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "setupEpisodePhase",
+      phaseDataOur,
       episodeNum,
       getOnSetupEpisodeFn(
         bot,
@@ -882,12 +896,7 @@ function getOnPostTeleportPhaseFn(
         args,
         phaseDataOur,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "setupEpisodePhase",
-      phaseDataOur,
-      episodeNum,
-      "postTeleportPhase end",
+      { location: "postTeleportPhase end" },
     );
   };
 }
@@ -915,10 +924,19 @@ function getOnSetupEpisodeFn(
   args,
   phaseDataOur,
 ) {
-  return async (phaseDataOther) => {
+  return async (peerMap) => {
+    coordinator.broadcastToPeers(
+      "setupEpisodePhase",
+      phaseDataOur,
+      episodeNum,
+      "setupEpisodePhase beginning",
+    );
+    const peerPositionsMap = new Map(
+      [...peerMap.entries()].map(([name, data]) => [name, data.position]),
+    );
     console.log(
-      `[${bot.username}] other position after teleport: ${JSON.stringify(
-        phaseDataOther,
+      `[${bot.username}] peer positions after teleport: ${JSON.stringify(
+        [...peerPositionsMap.entries()],
       )}`,
     );
     try {
@@ -930,20 +948,19 @@ function getOnSetupEpisodeFn(
       );
     }
     console.log(`[${bot.username}] setting up episode ${episodeNum}`);
-    const { botPositionNew, otherBotPositionNew } =
-      await episodeInstance.setupEpisode(
-        bot,
-        rcon,
-        sharedBotRng,
-        coordinator,
-        episodeNum,
-        args,
-        phaseDataOur.position,
-        phaseDataOther.position,
-      );
+    const lookTargetPosition = await episodeInstance.setupEpisode(
+      bot,
+      rcon,
+      sharedBotRng,
+      coordinator,
+      episodeNum,
+      args,
+      phaseDataOur.position,
+      peerPositionsMap,
+    );
     await lookAtSmooth(
       bot,
-      otherBotPositionNew,
+      lookTargetPosition,
       DEFAULT_CAMERA_SPEED_DEGREES_PER_SEC,
       { randomized: false, useEasing: false },
     );
@@ -951,8 +968,9 @@ function getOnSetupEpisodeFn(
     await sleep(1000);
 
     // Call the entry point method
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "startRecordingPhase",
+      bot.entity.position.clone(),
       episodeNum,
       getOnStartRecordingFn(
         bot,
@@ -963,12 +981,7 @@ function getOnSetupEpisodeFn(
         episodeInstance,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "startRecordingPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "setupEpisodePhase end" },
     );
   };
 }
@@ -994,8 +1007,8 @@ function getOnStartRecordingFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    coordinator.broadcastToPeers(
       "startRecordingPhase",
       bot.entity.position.clone(),
       episodeNum,
@@ -1034,8 +1047,8 @@ function getOnStartRecordingFn(
  * @param {*} bot - Mineflayer bot instance.
  * @param {*} rcon - RCON connection instance.
  * @param {Object} args - Configuration args.
- * @param {*} ourPosition - Our current position (vec3-like).
- * @param {*} otherBotPosition - Peer current position (vec3-like).
+ * @param {*} coordinator - Bot coordinator (used to resolve peer names).
+ * @param {Array} allPositions - Positions of all bots participating in this episode (vec3-like).
  * @param {*} episodeInstance - Episode instance (used for min/max distances and eval detection).
  * @param {Function} sharedBotRng - Shared RNG (currently unused; reserved for future determinism).
  * @param {number} episodeNum - Episode number (for logging/commands).
@@ -1045,8 +1058,8 @@ async function teleport(
   bot,
   rcon,
   args,
-  ourPosition,
-  otherBotPosition,
+  coordinator,
+  allPositions,
   episodeInstance,
   sharedBotRng,
   episodeNum,
@@ -1068,7 +1081,7 @@ async function teleport(
       await directTeleport(
         bot,
         rcon,
-        args.other_bot_name,
+        coordinator.getSinglePeerName(),
         episodeNum,
         turnToLookEvalTpPoints,
       );
@@ -1076,11 +1089,13 @@ async function teleport(
     }
   }
 
-  // Initialize teleport center once as the midpoint between this bot and the other bot
+  // Initialize teleport center once as the centroid of all participating bots
   if (!bot._teleport_center) {
+    const sumX = allPositions.reduce((s, p) => s + p.x, 0);
+    const sumZ = allPositions.reduce((s, p) => s + p.z, 0);
     bot._teleport_center = {
-      x: (ourPosition.x + otherBotPosition.x) / 2,
-      z: (ourPosition.z + otherBotPosition.z) / 2,
+      x: sumX / allPositions.length,
+      z: sumZ / allPositions.length,
     };
     console.log(
       `[${bot.username}] initializing teleport center: ${JSON.stringify(bot._teleport_center)}`,
@@ -1121,7 +1136,6 @@ async function teleport(
     const maxRange = Math.floor(
       episodeInstance.constructor.INIT_MAX_BOTS_DISTANCE / 2,
     );
-    const targets = `${bot.username} ${args.other_bot_name}`;
     const cmd = `spreadplayers ${centerX} ${centerZ} ${minDistance} ${maxRange} false @a[tag=minebot]`;
     console.log(`[${bot.username}] spreadplayers command: ${cmd}`);
     let result;
@@ -1145,7 +1159,7 @@ async function teleport(
     }
     console.log(`[${bot.username}] spreadplayers result: ${result}`);
     attemptsWithThisRadius++;
-    if (!result.startsWith("Spread 2 player")) {
+    if (!result.startsWith(`Spread ${allPositions.length} player`)) {
       if (attemptsWithThisRadius >= MAX_ATTEMPTS_WITH_THIS_RADIUS) {
         console.log(
           `[${bot.username}] spreadplayers failed after ${attemptsWithThisRadius} attempts with radius ${bot._teleport_radius}, halving the radius and trying again`,
@@ -1192,30 +1206,25 @@ function getOnPeerErrorPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (phaseDataOther) => {
+  return async (peerErrorData) => {
     console.error(
       `[${bot.username}] Received peerErrorPhase_${episodeNum} from peer, stopping.`,
-      phaseDataOther["reason"],
+      peerErrorData["reason"],
     );
     episodeInstance._peerError = true;
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      bot.entity.position.clone(),
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      `peerErrorPhase_${episodeNum} end`,
+      { location: `peerErrorPhase_${episodeNum} end` },
     );
   };
 }

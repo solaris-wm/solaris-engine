@@ -54,8 +54,8 @@ function getOnBuildHouseSetupPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (phaseDataOther) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    coordinator.broadcastToPeers(
       `buildHouseSetupPhase_${iterationID}`,
       { position: bot.entity.position.clone() },
       episodeNum,
@@ -68,8 +68,9 @@ function getOnBuildHouseSetupPhaseFn(
     };
 
     // Transition to build phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `buildHousePhase_${iterationID}`,
+      buildPhaseDataOur,
       episodeNum,
       getOnBuildHousePhaseFn(
         bot,
@@ -82,12 +83,7 @@ function getOnBuildHouseSetupPhaseFn(
         args,
         buildPhaseDataOur,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `buildHousePhase_${iterationID}`,
-      buildPhaseDataOur,
-      episodeNum,
-      `buildHouseSetupPhase_${iterationID} end`,
+      { location: `buildHouseSetupPhase_${iterationID} end` },
     );
   };
 }
@@ -116,8 +112,10 @@ function getOnBuildHousePhaseFn(
   args,
   phaseDataOur,
 ) {
-  return async function onBuildHousePhase(phaseDataOther) {
-    coordinator.sendToOtherBot(
+  return async function onBuildHousePhase(peerMap) {
+    const peerData = peerMap.values().next().value;
+    const peerName = coordinator.getSinglePeerName();
+    coordinator.broadcastToPeers(
       `buildHousePhase_${iterationID}`,
       phaseDataOur,
       episodeNum,
@@ -133,10 +131,10 @@ function getOnBuildHousePhaseFn(
 
     // STEP 2: Initial eye contact
     console.log(
-      `[${bot.username}] 👀 STEP 2: Making eye contact with ${args.other_bot_name}...`,
+      `[${bot.username}] 👀 STEP 2: Making eye contact with ${peerName}...`,
     );
     try {
-      const otherEntity = bot.players[args.other_bot_name]?.entity;
+      const otherEntity = bot.players[peerName]?.entity;
       if (otherEntity) {
         const targetPos = otherEntity.position.offset(0, otherEntity.height, 0);
         await bot.lookAt(targetPos, false);
@@ -158,9 +156,9 @@ function getOnBuildHousePhaseFn(
       phaseDataOur.position.z,
     ).floored();
     const otherBotPos = new Vec3(
-      phaseDataOther.position.x,
-      phaseDataOther.position.y,
-      phaseDataOther.position.z,
+      peerData.position.x,
+      peerData.position.y,
+      peerData.position.z,
     ).floored();
 
     // Use the higher Y level between bots to ensure consistent elevation
@@ -230,7 +228,7 @@ function getOnBuildHousePhaseFn(
         const { alphaTargets, bravoTargets } = splitWorkByXAxis(
           phaseTargets,
           args.bot_name,
-          args.other_bot_name,
+          peerName,
         );
 
         // Determine which half based on proximity to house origin
@@ -241,7 +239,7 @@ function getOnBuildHousePhaseFn(
         let myTargets;
         if (botIsOnWestSide === otherBotIsOnWestSide) {
           // Tie! Use alphabetical order: Alpha gets west, Bravo gets east
-          const isAlphaBot = bot.username < args.other_bot_name;
+          const isAlphaBot = bot.username < peerName;
           myTargets = isAlphaBot ? alphaTargets : bravoTargets;
           console.log(
             `[${bot.username}] ⚠️ Both bots on ${botIsOnWestSide ? "WEST" : "EAST"} side - using tie-breaker (${isAlphaBot ? "WEST" : "EAST"} half)`,
@@ -298,7 +296,7 @@ function getOnBuildHousePhaseFn(
 
         // Wait for other bot to finish this phase
         console.log(
-          `[${bot.username}]    Waiting for ${args.other_bot_name}...`,
+          `[${bot.username}]    Waiting for ${peerName}...`,
         );
         await sleep(1000); // Give other bot time to catch up
         console.log(
@@ -358,24 +356,19 @@ function getOnBuildHousePhaseFn(
 
     console.log(`[${bot.username}] ✅ BUILD HOUSE phase complete!`);
     // Transition to stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      phaseDataOur,
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      phaseDataOur,
-      episodeNum,
-      `buildHousePhase_${iterationID} end`,
+      { location: `buildHousePhase_${iterationID} end` },
     );
   };
 }
@@ -405,7 +398,7 @@ class BuildHouseEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     console.log(`[${bot.username}] 🏠 Setting up house building episode...`);
 
@@ -434,11 +427,7 @@ class BuildHouseEpisode extends BaseEpisode {
       await ensureBotHasEnough(bot, rcon, blockType, count);
     }
 
-    // Return unchanged positions since we don't move bots during setup
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -454,8 +443,9 @@ class BuildHouseEpisode extends BaseEpisode {
       position: bot.entity.position.clone(),
     };
 
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `buildHouseSetupPhase_${iterationID}`,
+      phaseDataOur,
       episodeNum,
       getOnBuildHouseSetupPhaseFn(
         bot,
@@ -467,12 +457,7 @@ class BuildHouseEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `buildHouseSetupPhase_${iterationID}`,
-      phaseDataOur,
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 

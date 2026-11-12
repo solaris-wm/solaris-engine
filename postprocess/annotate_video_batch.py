@@ -10,9 +10,9 @@ Takes either:
 2. A parent directory containing multiple subdirectories, each with the above structure.
    The script will automatically detect and process all subdirectories.
 
-For each video pair (Alpha and Bravo perspectives), this script:
-1. Annotates each video with action overlays
-2. Vertically concatenates the two perspectives into a single video
+For each N-player episode, this script:
+1. Annotates each bot's video with action overlays
+2. Vertically concatenates the N perspectives into a single video
 
 Usage:
     python annotate_video_batch.py /path/to/videos_dir [--workers N] [--output-dir DIR]
@@ -83,6 +83,142 @@ def load_action_data(json_file: Path) -> Optional[List[dict]]:
 def radians_per_tick_to_degrees_per_second(value):
     """Convert from radians per 0.05s to degrees per second."""
     return np.degrees(value) * 20  # 20 ticks per second
+
+
+def draw_absolute_pose_widget(frame_bgr, x, y, z, yaw, pitch):
+    """Draw a pose widget showing absolute 5D pose (x, y, z, yaw, pitch).
+
+    yaw and pitch are expected in mineflayer-internal radians. Display
+    converts to Notchian (Minecraft) convention:
+    yaw_notch = pi - yaw_internal, pitch_notch = -pitch_internal.
+    Mirrors the model-side widget in layout/style; adapted from 6D to 5D
+    input (yaw angle used directly instead of cos/sin encoding).
+    """
+    for v in (x, y, z, yaw, pitch):
+        if not np.isfinite(v):
+            return frame_bgr
+
+    notch_yaw = np.pi - float(yaw)
+    notch_pitch = -float(pitch)
+    h = frame_bgr.shape[0]
+    font = cv2.FONT_HERSHEY_SIMPLEX
+    aa = cv2.LINE_AA
+
+    widget_x = 10
+    widget_w = 340
+    widget_h = 290
+    widget_y = h - widget_h - 10
+
+    overlay = frame_bgr.copy()
+    cv2.rectangle(
+        overlay,
+        (widget_x, widget_y),
+        (widget_x + widget_w, widget_y + widget_h),
+        (0, 0, 0),
+        -1,
+    )
+    frame_bgr = cv2.addWeighted(overlay, 0.6, frame_bgr, 0.4, 0)
+
+    cv2.putText(
+        frame_bgr,
+        "Abs. Pose",
+        (widget_x + 10, widget_y + 30),
+        font,
+        0.85,
+        (200, 200, 200),
+        2,
+        aa,
+    )
+    cv2.putText(
+        frame_bgr,
+        f"X:{x:.1f}  Y:{y:.1f}",
+        (widget_x + 10, widget_y + 62),
+        font,
+        0.72,
+        (230, 230, 230),
+        2,
+        aa,
+    )
+    cv2.putText(
+        frame_bgr,
+        f"Z:{z:.1f}",
+        (widget_x + 10, widget_y + 90),
+        font,
+        0.72,
+        (230, 230, 230),
+        2,
+        aa,
+    )
+
+    cx = widget_x + 100
+    cy = widget_y + 195
+    radius = 72
+    cv2.circle(frame_bgr, (cx, cy), radius, (140, 140, 140), 2, aa)
+    cv2.circle(frame_bgr, (cx, cy), 5, (255, 255, 255), -1, aa)
+    cv2.putText(frame_bgr, "N", (cx - 9, cy - radius + 20), font, 0.65, (200, 200, 200), 2, aa)
+    cv2.putText(frame_bgr, "S", (cx - 9, cy + radius - 3), font, 0.65, (200, 200, 200), 2, aa)
+    cv2.putText(frame_bgr, "E", (cx + radius - 16, cy + 7), font, 0.65, (200, 200, 200), 2, aa)
+    cv2.putText(frame_bgr, "W", (cx - radius + 3, cy + 7), font, 0.65, (200, 200, 200), 2, aa)
+
+    needle_len = radius - 14
+    ndx = int(-np.sin(notch_yaw) * needle_len)
+    ndy = int(np.cos(notch_yaw) * needle_len)
+    cv2.arrowedLine(
+        frame_bgr,
+        (cx, cy),
+        (cx + ndx, cy + ndy),
+        (0, 220, 255),
+        3,
+        aa,
+        tipLength=0.32,
+    )
+    yaw_deg = (np.degrees(notch_yaw) + 180) % 360 - 180
+    cv2.putText(
+        frame_bgr,
+        f"{yaw_deg:+.0f}deg",
+        (cx - 34, cy + radius + 25),
+        font,
+        0.65,
+        (0, 220, 255),
+        2,
+        aa,
+    )
+    cv2.putText(frame_bgr, "Yaw", (cx - 20, widget_y + 112), font, 0.58, (170, 170, 170), 1, aa)
+
+    gauge_x = widget_x + 248
+    gauge_top = widget_y + 118
+    gauge_bot = widget_y + 258
+    gauge_h = gauge_bot - gauge_top
+    gauge_w = 18
+    cv2.rectangle(frame_bgr, (gauge_x, gauge_top), (gauge_x + gauge_w, gauge_bot), (140, 140, 140), 2, aa)
+    mid_y = gauge_top + gauge_h // 2
+    cv2.line(frame_bgr, (gauge_x, mid_y), (gauge_x + gauge_w, mid_y), (110, 110, 110), 1, aa)
+    cv2.putText(frame_bgr, "^", (gauge_x + gauge_w + 6, gauge_top + 12), font, 0.6, (180, 180, 180), 2, aa)
+    cv2.putText(frame_bgr, "-", (gauge_x + gauge_w + 6, mid_y + 7), font, 0.65, (180, 180, 180), 2, aa)
+    cv2.putText(frame_bgr, "v", (gauge_x + gauge_w + 6, gauge_bot - 2), font, 0.6, (180, 180, 180), 2, aa)
+    pitch_clamped = max(-np.pi / 2, min(np.pi / 2, notch_pitch))
+    frac = (pitch_clamped + np.pi / 2) / np.pi
+    marker_y = int(gauge_top + frac * gauge_h)
+    cv2.rectangle(
+        frame_bgr,
+        (gauge_x + 2, marker_y - 5),
+        (gauge_x + gauge_w - 2, marker_y + 5),
+        (0, 230, 100),
+        -1,
+    )
+    pitch_deg = np.degrees(notch_pitch)
+    cv2.putText(
+        frame_bgr,
+        f"{pitch_deg:+.0f}d",
+        (gauge_x - 14, gauge_bot + 25),
+        font,
+        0.65,
+        (0, 230, 100),
+        2,
+        aa,
+    )
+    cv2.putText(frame_bgr, "Pitch", (gauge_x - 4, widget_y + 112), font, 0.58, (170, 170, 170), 1, aa)
+    return frame_bgr
 
 
 def create_action_overlay(
@@ -340,6 +476,16 @@ def create_action_overlay(
     else:
         cv2.circle(frame, (arrow_center_x, arrow_center_y), 3, (0, 255, 255), -1)
 
+    if all(k in action for k in ("x", "y", "z", "yaw", "pitch")):
+        frame = draw_absolute_pose_widget(
+            frame,
+            action["x"],
+            action["y"],
+            action["z"],
+            action["yaw"],
+            action["pitch"],
+        )
+
     return frame
 
 
@@ -379,40 +525,37 @@ def annotate_video_to_frames(
 
 
 def concatenate_videos_vertically(
-    alpha_frames: List[np.ndarray],
-    bravo_frames: List[np.ndarray],
+    per_player_frames: List[List[np.ndarray]],
     fps: float,
     output_path: Path,
 ):
     """
-    Vertically concatenate two sets of video frames (Alpha on top, Bravo on bottom).
-    Handles videos of different lengths by padding the shorter one with the last frame.
+    Vertically concatenate N sets of video frames (one row per player).
+    Handles videos of different lengths by padding shorter ones with the last frame.
     """
-    if not alpha_frames and not bravo_frames:
-        raise RuntimeError("Both frame lists are empty")
+    if not per_player_frames or all(not f for f in per_player_frames):
+        raise RuntimeError("All frame lists are empty")
 
-    # Handle case where one video might be longer than the other
-    max_frames = max(len(alpha_frames), len(bravo_frames))
+    # Handle case where videos have different lengths
+    max_frames = max(len(f) for f in per_player_frames)
 
-    # Pad shorter video with last frame
-    if len(alpha_frames) < max_frames:
-        alpha_frames.extend([alpha_frames[-1]] * (max_frames - len(alpha_frames)))
-    if len(bravo_frames) < max_frames:
-        bravo_frames.extend([bravo_frames[-1]] * (max_frames - len(bravo_frames)))
+    # Pad shorter videos with last frame
+    for frames in per_player_frames:
+        if len(frames) < max_frames:
+            frames.extend([frames[-1]] * (max_frames - len(frames)))
 
-    # Get dimensions
-    alpha_h, alpha_w = alpha_frames[0].shape[:2]
-    bravo_h, bravo_w = bravo_frames[0].shape[:2]
-
-    # Resize if widths don't match
-    target_width = max(alpha_w, bravo_w)
-    if alpha_w != target_width:
-        alpha_frames = [cv2.resize(f, (target_width, alpha_h)) for f in alpha_frames]
-    if bravo_w != target_width:
-        bravo_frames = [cv2.resize(f, (target_width, bravo_h)) for f in bravo_frames]
+    # Resize widths to match the widest frame
+    heights = [f[0].shape[0] for f in per_player_frames]
+    widths = [f[0].shape[1] for f in per_player_frames]
+    target_width = max(widths)
+    for i, frames in enumerate(per_player_frames):
+        if widths[i] != target_width:
+            per_player_frames[i] = [
+                cv2.resize(fr, (target_width, heights[i])) for fr in frames
+            ]
 
     # Output dimensions
-    out_height = alpha_h + bravo_h
+    out_height = sum(heights)
     out_width = target_width
 
     # Create video writer
@@ -423,8 +566,8 @@ def concatenate_videos_vertically(
         raise RuntimeError(f"Cannot create output video file '{output_path}'")
 
     # Write concatenated frames
-    for alpha_frame, bravo_frame in zip(alpha_frames, bravo_frames):
-        combined = np.vstack([alpha_frame, bravo_frame])
+    for frame_tuple in zip(*per_player_frames):
+        combined = np.vstack(frame_tuple)
         out.write(combined)
 
     out.release()
@@ -432,26 +575,25 @@ def concatenate_videos_vertically(
 
 def extract_video_key(video_name: str) -> Optional[str]:
     """
-    Extract the key that identifies a video pair.
-    Video name format: TIMESTAMP_EPISODE_<Alpha|Bravo>_instance_XXX_camera.mp4
-    Returns: TIMESTAMP_EPISODE_instance_XXX (without Alpha/Bravo)
+    Extract the key that identifies an episode across players.
+    Video name format: TIMESTAMP_EPISODE_<Bot>_instance_XXX_camera.mp4
+    Returns: TIMESTAMP_EPISODE_instance_XXX (bot name removed)
     """
     # Remove _camera.mp4 suffix
     base_name = video_name.replace("_camera.mp4", "")
 
-    # Replace Alpha or Bravo with placeholder to get pair key
-    match = re.match(r"(.+)_(Alpha|Bravo)_(.+)", base_name)
+    # Replace the bot name with a placeholder to get the group key
+    match = re.match(r"(.+)_([A-Z][a-z]+)_(.+)", base_name)
     if match:
         return f"{match.group(1)}_{match.group(3)}"
     return None
 
 
 def extract_player_type(video_name: str) -> Optional[str]:
-    """Extract player type (Alpha or Bravo) from video name."""
-    if "_Alpha_" in video_name:
-        return "Alpha"
-    elif "_Bravo_" in video_name:
-        return "Bravo"
+    """Extract bot name (capitalized NATO word) from video name."""
+    match = re.search(r"_([A-Z][a-z]+)_", video_name)
+    if match:
+        return match.group(1)
     return None
 
 
@@ -592,44 +734,35 @@ def process_video_pair(
     json_dir: Path,
 ) -> Tuple[bool, str]:
     """
-    Process a single video pair: annotate both videos and concatenate vertically.
+    Process a single N-player episode: annotate each bot's video and concatenate vertically.
     Returns (success, message).
     """
     try:
-        alpha_path = pair_videos.get("Alpha")
-        bravo_path = pair_videos.get("Bravo")
+        if not pair_videos:
+            return False, f"No videos for {pair_key}"
 
-        if not alpha_path or not bravo_path:
-            missing = "Alpha" if not alpha_path else "Bravo"
-            return False, f"Missing {missing} video for pair {pair_key}"
+        fps: Optional[float] = None
+        per_player_frames: List[List[np.ndarray]] = []
+        for bot_name in sorted(pair_videos.keys()):
+            video_path = pair_videos[bot_name]
+            json_path = get_json_path_for_video(video_path, json_dir)
+            actions = load_action_data(json_path)
+            if actions is None:
+                return False, f"Missing action data: {json_path.name}"
 
-        # Get JSON paths
-        alpha_json = get_json_path_for_video(alpha_path, json_dir)
-        bravo_json = get_json_path_for_video(bravo_path, json_dir)
-
-        # Load action data
-        alpha_actions = load_action_data(alpha_json)
-        bravo_actions = load_action_data(bravo_json)
-
-        if alpha_actions is None:
-            return False, f"Missing action data: {alpha_json.name}"
-        if bravo_actions is None:
-            return False, f"Missing action data: {bravo_json.name}"
-
-        # Annotate videos
-        alpha_frames, fps, _, _ = annotate_video_to_frames(
-            alpha_path, alpha_actions, "Alpha"
-        )
-        bravo_frames, _, _, _ = annotate_video_to_frames(
-            bravo_path, bravo_actions, "Bravo"
-        )
+            frames, this_fps, _, _ = annotate_video_to_frames(
+                video_path, actions, bot_name
+            )
+            if fps is None:
+                fps = this_fps
+            per_player_frames.append(frames)
 
         # Create output path
         output_filename = f"{pair_key}_combined.mp4"
         output_path = output_dir / output_filename
 
         # Concatenate and save
-        concatenate_videos_vertically(alpha_frames, bravo_frames, fps, output_path)
+        concatenate_videos_vertically(per_player_frames, fps, output_path)
 
         return True, f"Created {output_filename}"
 
@@ -677,8 +810,9 @@ def process_single_videos_dir(
     except RuntimeError as e:
         return 0, 0, [str(e)]
 
-    # Filter to complete pairs only
-    complete_pairs = {k: v for k, v in pairs.items() if "Alpha" in v and "Bravo" in v}
+    # Filter to complete groups only (all N players present)
+    num_players = max((len(v) for v in pairs.values()), default=0)
+    complete_pairs = {k: v for k, v in pairs.items() if len(v) == num_players}
 
     if not complete_pairs:
         return 0, 0, []
@@ -805,19 +939,18 @@ def main():
             print(f"Error: {e}")
             sys.exit(1)
 
-        # Filter to complete pairs only
-        complete_pairs = {
-            k: v for k, v in pairs.items() if "Alpha" in v and "Bravo" in v
-        }
+        # Filter to complete groups only (all N players present)
+        num_players = max((len(v) for v in pairs.values()), default=0)
+        complete_pairs = {k: v for k, v in pairs.items() if len(v) == num_players}
         incomplete_pairs = {k: v for k, v in pairs.items() if k not in complete_pairs}
 
         # Print summary
         print(f"\n{'='*60}")
-        print(f"Video Pairs Summary")
+        print(f"Video Groups Summary")
         print(f"{'='*60}")
-        print(f"Total video pairs found: {len(pairs)}")
-        print(f"Complete pairs (Alpha + Bravo): {len(complete_pairs)}")
-        print(f"Incomplete pairs: {len(incomplete_pairs)}")
+        print(f"Total video groups found: {len(pairs)}")
+        print(f"Complete groups ({num_players} players): {len(complete_pairs)}")
+        print(f"Incomplete groups: {len(incomplete_pairs)}")
         if incomplete_pairs:
             print(f"\nIncomplete pairs (skipping):")
             for key, videos in list(incomplete_pairs.items())[:5]:

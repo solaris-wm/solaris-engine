@@ -26,7 +26,7 @@ const { ensureItemInHand } = require("../primitives/items");
 const { digBlock } = require("../primitives/digging");
 const { ensureBotHasEnough, unequipHand } = require("../primitives/items");
 const { land_pos, lookAtBot } = require("../primitives/movement");
-const { decidePrimaryBot, rconTp } = require("../utils/coordination");
+const { pickRandom, rconTp } = require("../utils/coordination");
 const { sleep } = require("../utils/helpers");
 const { BaseEpisode } = require("./base-episode");
 
@@ -226,8 +226,9 @@ function getOnBuildRoundPhaseFn(
   args,
   round,
 ) {
-  return async (phaseDataOther) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const peerName = coordinator.getSinglePeerName();
+    coordinator.broadcastToPeers(
       `buildRound_${iterationID}_${round}`,
       {},
       episodeNum,
@@ -274,7 +275,7 @@ function getOnBuildRoundPhaseFn(
       }
 
       await sleep(200);
-      await lookAtBot(bot, args.other_bot_name, 90);
+      await lookAtBot(bot, peerName, 90);
       await sleep(500);
 
       await sleep(
@@ -285,8 +286,9 @@ function getOnBuildRoundPhaseFn(
     } else {
       console.log(`[${bot.username}] is not a builder, skipping build round`);
     }
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `mineRound_${iterationID}_${round}`,
+      nextPhaseData,
       episodeNum,
       getOnMineRoundPhaseFn(
         bot,
@@ -300,12 +302,7 @@ function getOnBuildRoundPhaseFn(
         round,
         nextPhaseData,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `mineRound_${iterationID}_${round}`,
-      nextPhaseData,
-      episodeNum,
-      `buildRound_${iterationID}_${round} end`,
+      { location: `buildRound_${iterationID}_${round} end` },
     );
   };
 }
@@ -352,8 +349,10 @@ function getOnMineRoundPhaseFn(
   round,
   phaseDataOur,
 ) {
-  return async (phaseDataOther) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const peerName = coordinator.getSinglePeerName();
+    const peerData = peerMap.values().next().value;
+    coordinator.broadcastToPeers(
       `mineRound_${iterationID}_${round}`,
       phaseDataOur,
       episodeNum,
@@ -361,7 +360,7 @@ function getOnMineRoundPhaseFn(
     );
 
     if (!episodeInstance._isBuilder) {
-      const roundData = phaseDataOther.roundData;
+      const roundData = peerData.roundData;
       if (!roundData) {
         throw new Error(
           `[${bot.username}] No roundData received from builder for mining phase.`,
@@ -374,7 +373,7 @@ function getOnMineRoundPhaseFn(
         `[${bot.username}] 👀 Round ${round + 1}/${episodeInstance._numRounds}: Watching builder...`,
       );
 
-      await lookAtBot(bot, args.other_bot_name, 90);
+      await lookAtBot(bot, peerName, 90);
 
       console.log(
         `[${bot.username}] ⛏️ Mining ${roundData.positions.length} block(s)...`,
@@ -399,7 +398,7 @@ function getOnMineRoundPhaseFn(
       }
 
       await sleep(200);
-      await lookAtBot(bot, args.other_bot_name, 90);
+      await lookAtBot(bot, peerName, 90);
       await sleep(500);
       await sleep(
         Math.random() * (ROUND_DELAY_MS_MAX - ROUND_DELAY_MS_MIN + 1) +
@@ -410,8 +409,9 @@ function getOnMineRoundPhaseFn(
     }
     if (round < episodeInstance._numRounds - 1) {
       const nextRound = round + 1;
-      coordinator.onceEvent(
+      coordinator.exchangeWithPeers(
         `buildRound_${iterationID}_${nextRound}`,
+        {},
         episodeNum,
         getOnBuildRoundPhaseFn(
           bot,
@@ -424,32 +424,22 @@ function getOnMineRoundPhaseFn(
           args,
           nextRound,
         ),
-      );
-      coordinator.sendToOtherBot(
-        `buildRound_${iterationID}_${nextRound}`,
-        {},
-        episodeNum,
-        `MineRound_${iterationID}_${round} end`,
+        { location: `MineRound_${iterationID}_${round} end` },
       );
     } else {
-      coordinator.onceEvent(
+      coordinator.exchangeWithPeers(
         "stopPhase",
+        { position: bot.entity.position.clone() },
         episodeNum,
         episodeInstance.getOnStopPhaseFn(
           bot,
           rcon,
           sharedBotRng,
           coordinator,
-          args.other_bot_name,
           episodeNum,
           args,
         ),
-      );
-      coordinator.sendToOtherBot(
-        "stopPhase",
-        bot.entity.position.clone(),
-        episodeNum,
-        `placeAndMinePhase_${iterationID} end`,
+        { location: `placeAndMinePhase_${iterationID} end` },
       );
     }
   };
@@ -466,9 +456,10 @@ function getOnPlaceAndMinePhaseFn(
   args,
 ) {
   return async function onPlaceAndMinePhase() {
-    coordinator.sendToOtherBot(
+    const peerName = coordinator.getSinglePeerName();
+    coordinator.broadcastToPeers(
       `placeAndMinePhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `placeAndMinePhase_${iterationID} beginning`,
     );
@@ -493,19 +484,20 @@ function getOnPlaceAndMinePhaseFn(
       `[${bot.username}] 📐 AxO=${axisOfObservation}, AxA=${axisOfActivity}`,
     );
 
-    await lookAtBot(bot, args.other_bot_name, 90);
+    await lookAtBot(bot, peerName, 90);
     await sleep(1000);
 
     if (needsClearing && !isBuilder) {
       console.log(`[${bot.username}] 🧹 Miner clearing observation axis...`);
       await clearBuildArea(bot, buildCenter, axisOfObservation);
       await sleep(500);
-      await lookAtBot(bot, args.other_bot_name, 90);
+      await lookAtBot(bot, peerName, 90);
       await sleep(500);
     }
 
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `clearingComplete_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnClearingCompletePhaseFn(
         bot,
@@ -517,12 +509,7 @@ function getOnPlaceAndMinePhaseFn(
         episodeInstance,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `clearingComplete_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      `clearingComplete_${iterationID} end`,
+      { location: `clearingComplete_${iterationID} end` },
     );
   };
 }
@@ -538,16 +525,17 @@ function getOnClearingCompletePhaseFn(
   args,
 ) {
   return async () => {
-    coordinator.sendToOtherBot(
+    coordinator.broadcastToPeers(
       `clearingComplete_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `clearingComplete_${iterationID} beginning`,
     );
 
     const round = 0;
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `buildRound_${iterationID}_${round}`,
+      {},
       episodeNum,
       getOnBuildRoundPhaseFn(
         bot,
@@ -560,12 +548,7 @@ function getOnClearingCompletePhaseFn(
         args,
         round,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `buildRound_${iterationID}_${round}`,
-      {},
-      episodeNum,
-      `clearingComplete_${iterationID} end`,
+      { location: `clearingComplete_${iterationID} end` },
     );
   };
 }
@@ -588,18 +571,18 @@ class PlaceAndMineEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     console.log(`[${bot.username}] 🎬 Setting up place-and-mine episode...`);
-    const { botPositionNew, otherBotPositionNew } =
-      await this.findGroundAndPositionBots(
-        bot,
-        rcon,
-        sharedBotRng,
-        args,
-        botPosition,
-        otherBotPosition,
-      );
+    const otherBotPosition = peerPositionsMap.values().next().value;
+    const lookTargetPosition = await this.findGroundAndPositionBots(
+      bot,
+      rcon,
+      sharedBotRng,
+      coordinator,
+      botPosition,
+      otherBotPosition,
+    );
 
     for (const blockType of BLOCK_TYPES) {
       await ensureBotHasEnough(bot, rcon, blockType, 64);
@@ -609,17 +592,14 @@ class PlaceAndMineEpisode extends BaseEpisode {
     await sleep(500);
 
     console.log(`[${bot.username}] ✅ Place-and-mine episode setup complete`);
-    return {
-      botPositionNew,
-      otherBotPositionNew,
-    };
+    return lookTargetPosition;
   }
 
   async findGroundAndPositionBots(
     bot,
     rcon,
     sharedBotRng,
-    args,
+    coordinator,
     botPosition,
     otherBotPosition,
   ) {
@@ -657,7 +637,8 @@ class PlaceAndMineEpisode extends BaseEpisode {
     }
 
     const side = sharedBotRng() < 0.5 ? -1 : 1;
-    const isBuilder = decidePrimaryBot(bot, sharedBotRng, args);
+    const isBuilder =
+      bot.username === pickRandom(coordinator.getAllPlayerNames(), sharedBotRng);
     const builderOffset = side * DISTANCE_FROM_CENTER;
     const minerOffset = -side * DISTANCE_FROM_CENTER;
 
@@ -688,10 +669,7 @@ class PlaceAndMineEpisode extends BaseEpisode {
     this._axisOfObservation = axisOfObservation;
     this._needsClearing = needsClearing;
     this._isBuilder = isBuilder;
-    return {
-      botPositionNew,
-      otherBotPositionNew,
-    };
+    return otherBotPositionNew;
   }
 
   async entryPoint(
@@ -703,8 +681,9 @@ class PlaceAndMineEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `placeAndMinePhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnPlaceAndMinePhaseFn(
         bot,
@@ -716,12 +695,7 @@ class PlaceAndMineEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `placeAndMinePhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 

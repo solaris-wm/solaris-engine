@@ -134,12 +134,17 @@ GAME_PID=$!
 PIDS="$PIDS $GAME_PID"
 
 if [ "$ENABLE_RECORDING" = "1" ]; then
-  # Pick the video encoder. ffmpeg listing h264_nvenc only proves the encoder is
-  # compiled in — datacenter GPUs without NVENC silicon (A100, H100, A30) still
-  # fail at runtime. So probe with a one-frame test encode and fall back to CPU
-  # automatically. DISABLE_NVENC=1 skips the probe and forces CPU encoding.
+  # Pick the video encoder. CAMERA_ENCODER, when set, forces the choice
+  # (h264_nvenc or libx264). Otherwise auto-detect: ffmpeg listing h264_nvenc
+  # only proves the encoder is compiled in — datacenter GPUs without NVENC
+  # silicon (A100, H100, A30) still fail at runtime, so probe with a one-frame
+  # test encode and fall back to CPU automatically. DISABLE_NVENC=1 skips the
+  # probe and forces CPU encoding.
   VIDEO_ENCODER="libx264"
-  if [ "${DISABLE_NVENC:-0}" = "1" ]; then
+  if [ -n "${CAMERA_ENCODER:-}" ]; then
+    VIDEO_ENCODER="$CAMERA_ENCODER"
+    echo "[client] Using explicitly requested encoder: ${VIDEO_ENCODER}"
+  elif [ "${DISABLE_NVENC:-0}" = "1" ]; then
     echo "[client] NVENC disabled via DISABLE_NVENC=1; using CPU (libx264) encoding"
   elif ! ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_nvenc; then
     echo "[client] ffmpeg has no h264_nvenc support; using CPU (libx264) encoding"
@@ -195,21 +200,28 @@ EOF
   #                                            in the container (simplifies ffprobe
   #                                            extraction at postprocessing time).
 
-  if [ "$VIDEO_ENCODER" = "h264_nvenc" ]; then
-    echo "[client] Using NVENC hardware encoding (MKV) with wallclock timestamps"
-    ffmpeg -hide_banner -loglevel info -y \
-      -use_wallclock_as_timestamps 1 \
-      -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
-      -copyts -vsync 0 \
-      -c:v h264_nvenc -preset p4 -bf 0 -pix_fmt yuv420p "$RECORDING_PATH" &
-  else
-    echo "[client] Using CPU encoding (libx264, MKV) with wallclock timestamps"
-    ffmpeg -hide_banner -loglevel info -y \
-      -use_wallclock_as_timestamps 1 \
-      -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
-      -copyts -vsync 0 \
-      -codec:v libx264 -preset veryfast -bf 0 -pix_fmt yuv420p "$RECORDING_PATH" &
-  fi
+  case "$VIDEO_ENCODER" in
+    h264_nvenc)
+      echo "[client] Using NVENC hardware encoding (MKV) with wallclock timestamps"
+      ffmpeg -hide_banner -loglevel info -y \
+        -use_wallclock_as_timestamps 1 \
+        -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
+        -copyts -vsync 0 \
+        -c:v h264_nvenc -preset p4 -rc:v vbr -b:v 0 -bf 0 -cq 17 -pix_fmt yuv420p "$RECORDING_PATH" &
+      ;;
+    libx264)
+      echo "[client] Using CPU encoding (libx264, MKV) with wallclock timestamps"
+      ffmpeg -hide_banner -loglevel info -y \
+        -use_wallclock_as_timestamps 1 \
+        -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
+        -copyts -vsync 0 \
+        -codec:v libx264 -preset veryfast -bf 0 -crf 17 -pix_fmt yuv420p "$RECORDING_PATH" &
+      ;;
+    *)
+      echo "[client] ERROR: unknown CAMERA_ENCODER='$VIDEO_ENCODER' (expected h264_nvenc or libx264)" >&2
+      exit 1
+      ;;
+  esac
   FFMPEG_PID=$!
   PIDS="$PIDS $FFMPEG_PID"
 else

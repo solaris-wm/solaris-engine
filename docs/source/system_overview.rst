@@ -112,7 +112,7 @@ Camera
 
 The Camera Bot is the official Minecraft Java Client that runs headlessly on an ``Xvfb`` virtual display. We enable GPU-accelerated graphics via ``vglrun -d "egl"``. It connects to the server and pairs up with the corresponding Controller Bot of that player, 
 so that these two processes are logically a single player. Through the :ref:`Minecraft Server Plugin <minecraft-server-plugin>`, the camera bot, at all times, shares the first person perspective of its controller bot. 
-The Camera Bot captures graphics using ``ffmpeg`` with the ``-f x11grab`` option, which grabs the X11 virtual display. We enable NVENC hardware encoding via ``-c:v h264_nvenc``. ``SolarisEngine`` aligns the video and actions together in postprocessing to form a final episode. Both the controller (actions) and camera (video) bots record at ``20`` FPS. We save videos at ``1280×720``, though this is flexible.
+The Camera Bot captures graphics using ``ffmpeg`` with the ``-f x11grab`` option, which grabs the X11 virtual display. The H.264 encoder is selectable via the ``CAMERA_ENCODER`` environment variable (``h264_nvenc`` for NVIDIA GPU or ``libx264`` for CPU); if unset, the container probes NVENC with a one-frame test encode and falls back to ``libx264`` on GPUs without NVENC silicon (e.g. A100/H100), since ffmpeg listing ``h264_nvenc`` only proves the encoder is compiled in. ``DISABLE_NVENC=1`` skips the probe and forces CPU encoding. The postprocess encoder is chosen separately via ``orchestrate.py postprocess --encoder``; ``run.sh --encoder`` sets both stages at once. ``SolarisEngine`` aligns the video and actions together in postprocessing to form a final episode. Both the controller (actions) and camera (video) bots record at ``20`` FPS. We save videos at ``1280×720``, though this is flexible.
 
 .. _minecraft-server-plugin:
 
@@ -126,8 +126,7 @@ Minecraft Server Plugin
 Spectator Bot
 -------------
 
-The spectator bot is another Mineflayer bot (making it a total of 3 bots constituting a single logical player). It always stays in the Spectate mode and just follows its controller bot. 
-It always stays in the Spectate mode and follows its controller bot. This extra bot only exists to observe both the controller and the camera at once and is used internally by the plugin to synchronize block-breaking animations.
+Each player is realised as a triple of Mineflayer bots: a controller, a camera, and a spectator. The spectator stays in Spectate mode and follows its controller bot at all times. It exists solely to observe the controller and the camera simultaneously, and is used internally by the plugin to synchronize block-breaking animations across the controller/camera pair.
 
 .. _postprocessing:
 
@@ -154,8 +153,8 @@ Training
 ~~~~~~~~
 
 
-The :ref:`prepare_train_dataset.py <prepare-train-dataset-py>` script validates and transforms the output of ``SolarisEngine``  to the final dataset format, and :ref:`split_train_test.py <split-train-test-py>` splits the dataset folder into ``train/`` and ``test/`` subfolders. The two optional scripts :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` and :ref:`filter_dataset.py <filter-dataset-py>` detect episodes 
-where either Alpha or Bravo is underwater by analyzing the oxygen bar HUD and excluding them from the train dataset. Lastly, the optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions. 
+The :ref:`prepare_train_dataset.py <prepare-train-dataset-py>` script validates and transforms the output of ``SolarisEngine``  to the final dataset format, and :ref:`split_train_test.py <split-train-test-py>` splits the dataset folder into ``train/`` and ``test/`` subfolders. The two optional scripts :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` and :ref:`filter_dataset.py <filter-dataset-py>` detect episodes
+where any player is underwater by analyzing the oxygen bar HUD and excluding them from the train dataset. Lastly, the optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions.
 It's a helpful debug tool to see how well all bots behave in an episode and that their actions are properly aligned with the observations.
 
 Eval
@@ -168,9 +167,9 @@ The :ref:`prepare_eval_datasets.py <prepare-eval-datasets-py>` script validates 
 Docker
 ------
 
-``SolarisEngine`` uses Docker and Docker Compose to manage its components. The controller bot, camera bot, spectator bot, and Minecraft server are separate Docker containers. 
-The controller bot has the additional ``act_recorder`` Python process for writing actions to disk that runs in a separate Docker container. 
-All in all, for two players, it's ``2 * 4 + 1 = 9`` long running Docker containers total. They are bundled in Docker Compose, forming an instance, which allows them to run in isolation. 
+``SolarisEngine`` uses Docker and Docker Compose to manage its components. The controller bot, camera bot, spectator bot, and Minecraft server are separate Docker containers.
+The controller bot has the additional ``act_recorder`` Python process for writing actions to disk that runs in a separate Docker container.
+For ``N`` players, that comes out to ``N * 4 + 1`` long-running Docker containers per instance (one controller, camera, spectator, and ``act_recorder`` per player, plus a single Minecraft server). They are bundled in Docker Compose, forming an instance, which allows them to run in isolation.
 A Docker Compose instance also has two additional procedural Docker containers, ``plugin_starter`` and ``prep_data``, 
 that run at startup to set up the Minecraft server and the server-side plugin.
 

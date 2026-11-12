@@ -10,6 +10,7 @@ class BaseEpisode {
   static INIT_MIN_BOTS_DISTANCE = MIN_BOTS_DISTANCE;
   static INIT_MAX_BOTS_DISTANCE = MAX_BOTS_DISTANCE;
   static WORKS_IN_NON_FLAT_WORLD = false;
+  static SUPPORTS_N_PLAYER = false;
 
   constructor(sharedBotRng) {
     // This constructor intentionally does nothing with sharedBotRng
@@ -17,7 +18,7 @@ class BaseEpisode {
 
   /**
    * Optional setup hook. No-op by default.
-   * @returns {Promise<{botPositionNew: Vec3, otherBotPositionNew: Vec3}>}
+   * @returns {Promise<Vec3>} Position for the bot to look at after setup.
    */
   async setupEpisode(
     bot,
@@ -27,12 +28,9 @@ class BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   /**
@@ -69,7 +67,6 @@ class BaseEpisode {
    * @param {Object} bot - The bot instance
    * @param {Object} sharedBotRng - Shared random number generator
    * @param {Object} coordinator - Coordinator for bot communication
-   * @param {string} otherBotName - Name of the other bot
    * @returns {Function} Async function that handles the stop phase
    */
   getOnStopPhaseFn(
@@ -77,11 +74,10 @@ class BaseEpisode {
     rcon,
     sharedBotRng,
     coordinator,
-    otherBotName,
     episodeNum,
     args,
   ) {
-    return async (otherBotPosition) => {
+    return async (peerMap) => {
       if (bot._episodeStopping) {
         console.log(
           `[${bot.username}] Episode already stopping, skipping stop phase.`,
@@ -89,7 +85,7 @@ class BaseEpisode {
         return;
       }
       bot._episodeStopping = true;
-      coordinator.sendToOtherBot(
+      coordinator.broadcastToPeers(
         "stopPhase",
         bot.entity.position.clone(),
         episodeNum,
@@ -114,25 +110,18 @@ class BaseEpisode {
         );
       }
 
-      // Wait for the connection to actually close
-
-      coordinator.onceEvent(
+      coordinator.exchangeWithPeers(
         "stoppedPhase",
+        bot.entity.position.clone(),
         episodeNum,
         this.getOnStoppedPhaseFn(
           bot,
           sharedBotRng,
           coordinator,
-          otherBotName,
           episodeNum,
           bot._currentEpisodeResolve,
         ),
-      );
-      coordinator.sendToOtherBot(
-        "stoppedPhase",
-        bot.entity.position.clone(),
-        episodeNum,
-        "StopPhase end",
+        { location: "StopPhase end" },
       );
     };
   }
@@ -142,7 +131,6 @@ class BaseEpisode {
    * @param {Object} bot - The bot instance
    * @param {Object} sharedBotRng - Shared random number generator
    * @param {Object} coordinator - Coordinator for bot communication
-   * @param {string} otherBotName - Name of the other bot
    * @param {number} episodeNum - Episode number
    * @param {Function} episodeResolve - Function to resolve the episode promise
    * @returns {Function} Async function that handles the stopped phase
@@ -151,18 +139,16 @@ class BaseEpisode {
     bot,
     sharedBotRng,
     coordinator,
-    otherBotName,
     episodeNum,
     episodeResolve,
   ) {
-    return async (otherBotPosition) => {
-      coordinator.sendToOtherBot(
+    return async (peerMap) => {
+      coordinator.broadcastToPeers(
         "stoppedPhase",
         bot.entity.position.clone(),
         episodeNum,
         "stoppedPhase beginning",
       );
-
       console.log(`[${bot.username}] stopped`);
       // Resolve the episode promise instead of exiting
       episodeResolve();
