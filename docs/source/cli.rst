@@ -76,7 +76,7 @@ Options
      - When ``1``, every controller also records the blocks around its player as a ``48×48×48`` cube of block states, 20 times per second. Postprocessing matches the cubes to the video frames and adds them, with the per‑frame camera pose, to the dataset (see :ref:`Voxel file format <voxel-file-format>`).
    * - ``--episode-types LIST``
      - ``all``
-     - Comma‑separated episode types to run, or ``all`` for the default set. Types outside the default set, such as the single‑player ``randomExplore`` and ``walkBackward``, run only when named here (see :ref:`Training episode types <training-episode-types>`).
+     - Comma‑separated episode types to run, or ``all`` for the default set. With ``--num-players 1`` the default set is the single‑player types ``randomExplore`` and ``walkBackward``; with two or more players those run only when named here (see :ref:`Training episode types <training-episode-types>`).
    * - ``-h``, ``--help``
      -
      - Show usage and exit

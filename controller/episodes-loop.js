@@ -179,6 +179,13 @@ const episodeTypes = isCustomEpisodeTypes
   ? process.env.EPISODE_TYPES.split(",").map((type) => type.trim())
   : defaultEpisodeTypes;
 
+/**
+ * Episode types run instead of the default list when there is one player and
+ * EPISODE_TYPES is not set: every type in the default list needs a second player.
+ * @type {string[]}
+ */
+const singlePlayerEpisodeTypes = ["randomExplore", "walkBackward"];
+
 function formatDateForFilename(date) {
   /**
    * Left-pad a value with zeros.
@@ -637,7 +644,10 @@ function getOnSpawnFn(bot, host, actRecorderPort, coordinator, args) {
     const worldType = (args.world_type || "flat").toLowerCase();
     const isFlatWorld = worldType === "flat";
     const needsNPlayerSupport = coordinator.getAllPlayerNames().length > 2;
-    const allEpisodeTypes = episodeTypes;
+    const allEpisodeTypes =
+      !isCustomEpisodeTypes && coordinator.getAllPlayerNames().length === 1
+        ? singlePlayerEpisodeTypes
+        : episodeTypes;
     const worldEligible = isFlatWorld
       ? allEpisodeTypes
       : allEpisodeTypes.filter(
