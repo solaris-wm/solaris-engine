@@ -71,6 +71,12 @@ Options
    * - ``--smoke-test 0|1``
      - ``0``
      - When ``1``, run one episode per eligible episode type in alphabetical order. ``--num-episodes`` is ignored. Useful for catching regressions across the full episode catalog quickly.
+   * - ``--record-voxels 0|1``
+     - ``0``
+     - When ``1``, every controller also records the blocks around its player as a ``48×48×48`` cube of block states, 20 times per second. Postprocessing matches the cubes to the video frames and adds them, with the per‑frame camera pose, to the dataset (see :ref:`Voxel file format <voxel-file-format>`).
+   * - ``--episode-types LIST``
+     - ``all``
+     - Comma‑separated episode types to run, or ``all`` for the default set. Types outside the default set, such as the single‑player ``randomExplore`` and ``walkBackward``, run only when named here (see :ref:`Training episode types <training-episode-types>`).
    * - ``-h``, ``--help``
      -
      - Show usage and exit
@@ -104,6 +110,8 @@ Data is written under ``<output-dir>/``. The following tree shows the directory 
    │       │   ├── aligned/
    │       │   │   ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>_camera.mp4         # one per bot
    │       │   │   ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>_camera_meta.json   # one per bot
+   │       │   │   ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>_voxels.npz         # with --record-voxels 1
+   │       │   │   ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>_camera_state.json  # with --record-voxels 1
    │       │   │   └── ... (other episodes)
    │       │   ├── camera/
    │       │   │   ├── data_<bot>/                                                             # one dir per bot
@@ -128,6 +136,8 @@ Data is written under ``<output-dir>/``. The following tree shows the directory 
    │       │       ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>.json               # one per bot
    │       │       ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>_meta.json          # one per bot
    │       │       ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>_episode_info.json  # one per bot
+   │       │       ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>_voxels.bin.gz         # with --record-voxels 1
+   │       │       ├── <timestep>_<episode_id>_<Bot>_instance_<instance_id>_voxels_meta.json      # with --record-voxels 1
    │       │       └── ... (other episodes)
    │       └── water_episodes.json
    └── datasets/
@@ -136,6 +146,8 @@ Data is written under ``<output-dir>/``. The following tree shows the directory 
            │   ├── batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>.mp4              # one per bot
            │   ├── batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>.json             # one per bot
            │   ├── batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>_episode_info.json
+           │   ├── batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>_voxels.npz           # with --record-voxels 1
+           │   ├── batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>_camera_state.json    # with --record-voxels 1
            │   └── ... (other episodes)
            ├── test/
            │   └── (same file patterns as train/)
@@ -151,7 +163,7 @@ Data is written under ``<output-dir>/``. The following tree shows the directory 
    * - Path (relative to ``<output-dir>``)
      - Description
    * - ``data_collection/train/batch_<batch_id>/aligned/``
-     - Per-episode aligned camera videos and metadata, one pair per bot: ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_camera.mp4`` and ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_camera_meta.json``. Produced by :ref:`process_recordings.py <process-recordings-py>` (called once per bot).
+     - Per-episode aligned camera videos and metadata, one pair per bot: ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_camera.mp4`` and ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_camera_meta.json``. Produced by :ref:`process_recordings.py <process-recordings-py>` (called once per bot). With ``--record-voxels 1`` it also writes, per bot, the frame‑aligned voxel cubes ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_voxels.npz`` (see :ref:`Voxel file format <voxel-file-format>`) and the camera poses ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_camera_state.json`` (see :ref:`Camera state file format <camera-state-file-format>`).
    * - ``data_collection/train/batch_<batch_id>/camera/data_<bot>/<instance_id>/``
      - Minecraft client home directory for the camera bot ``<bot>``. Contains ``.minecraft/`` and client runtime data. One directory per bot.
    * - ``data_collection/train/batch_<batch_id>/camera/output_<bot>/<instance_id>/``
@@ -163,11 +175,11 @@ Data is written under ``<output-dir>/``. The following tree shows the directory 
    * - ``data_collection/train/batch_<batch_id>/logs/docker-compose-<instance_id>/``
      - Docker logs for every service: one ``controller_<bot>_instance_<instance_id>.log`` / ``camera_<bot>_instance_<instance_id>.log`` / ``act_recorder_<bot>_instance_<instance_id>.log`` per bot, plus the shared ``mc_instance_<instance_id>.log`` and ``spectator_*`` logs.
    * - ``data_collection/train/batch_<batch_id>/output/``
-     - Controller actions (see :ref:`Action file format <action-file-format>`), one set per bot: ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>.json`` is copied to the final dataset folder as-is. Episode metadata ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_meta.json``, and episode info (see :ref:`Episode info file format <episode-info-file-format>`) ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_episode_info.json`` is also copied to the final dataset folder as-is.
+     - Controller actions (see :ref:`Action file format <action-file-format>`), one set per bot: ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>.json`` is copied to the final dataset folder as-is. Episode metadata ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_meta.json``, and episode info (see :ref:`Episode info file format <episode-info-file-format>`) ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_episode_info.json`` is also copied to the final dataset folder as-is. With ``--record-voxels 1``, also the raw voxel stream ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_voxels.bin.gz`` and its metadata ``<timestep>_<episode_id>_<Bot>_instance_<instance_id>_voxels_meta.json`` (see :ref:`Voxel file format <voxel-file-format>`), one pair per bot.
    * - ``data_collection/train/water_episodes.json``
      - (When water filtering enabled) List of detected water episodes for :ref:`filter_dataset.py <filter-dataset-py>`.
    * - ``datasets/<dataset-name>/train/``, ``test/``
-     - Prepared splits: ``batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>.mp4`` plus its action JSON (see :ref:`Action file format <action-file-format>`) and episode info JSON (see :ref:`Episode info file format <episode-info-file-format>`), one set per bot. Produced by :ref:`prepare_train_dataset.py <prepare-train-dataset-py>` and :ref:`split_train_test.py <split-train-test-py>`.
+     - Prepared splits: ``batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>.mp4`` plus its action JSON (see :ref:`Action file format <action-file-format>`) and episode info JSON (see :ref:`Episode info file format <episode-info-file-format>`), one set per bot. Produced by :ref:`prepare_train_dataset.py <prepare-train-dataset-py>` and :ref:`split_train_test.py <split-train-test-py>`. With ``--record-voxels 1``, each set also has ``batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>_voxels.npz`` and ``batch_<batch_id>_<episode_id>_<Bot>_instance_<instance_id>_camera_state.json``.
    * - ``datasets/<dataset-name>/annotated/``
      - Debug videos with overlaid actions (per‑player views vertically stacked in alphabetical bot‑name order). Produced by :ref:`annotate_video_batch.py <annotate-video-batch-py>`.
    * - ``datasets/<dataset-name>/discarded/``
@@ -377,6 +389,105 @@ Episode info files (``*_episode_info.json``) contain a single JSON object:
      "eval_metadata": {}
    }
 
+.. _voxel-file-format:
+
+Voxel file format
+~~~~~~~~~~~~~~~~~
+
+With ``--record-voxels 1``, each controller records the blocks around its player every 50 ms (20 Hz, the Minecraft tick rate). One capture is a cube of ``48×48×48`` cells, one cell per block, centred on the block the player stands in: the cube's lowest corner, its *origin*, is ``floor(position) - 24`` on every axis. Each cell holds a Minecraft block state id, with ``0`` for air. Cells in chunks the bot has not loaded are ``0`` as well. The cubes are read from the controller bot's own copy of the world, so they contain every block in range, whether or not the camera can see it.
+
+State ids are those of the recorded Minecraft version (``1.21``) in `minecraft-data <https://github.com/PrismarineJS/minecraft-data>`_. ``postprocess/dump_state_names.js`` writes the id‑to‑name table as JSON; it needs the repository's Node dependencies (``npm install``):
+
+.. code-block:: bash
+
+   node postprocess/dump_state_names.js 1.21 > state_names.json
+
+**Raw stream.** ``*_voxels.bin.gz`` in the ``output/`` directory is a gzip file of fixed‑size records, one per capture, all little‑endian:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 25 55
+
+   * - Field
+     - Type
+     - Description
+   * - epoch
+     - int64
+     - Capture time in milliseconds since the Unix epoch.
+   * - origin
+     - 3 × int32
+     - World coordinates ``x, y, z`` of the cube's lowest corner.
+   * - cells
+     - 48³ × uint16
+     - Block state ids, ``x`` outermost and ``z`` innermost: cell ``(x, y, z)`` is at index ``(x * 48 + y) * 48 + z``.
+
+The sidecar ``*_voxels_meta.json`` holds the cube edge length and the Minecraft version:
+
+.. code-block:: json
+
+   {"grid_size": 48, "mc_version": "1.21"}
+
+``postprocess/voxel_io.py`` reads and writes this format (``read_stream``, ``write_stream``).
+
+**Aligned file.** ``*_voxels.npz`` in ``aligned/`` and in the final dataset holds one cube per video frame. For an episode of ``T`` frames, frame ``t`` gets the capture nearest in time to action ``t``:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 25 55
+
+   * - Array
+     - Type and shape
+     - Description
+   * - ``grids``
+     - uint16 ``(T, 48, 48, 48)``
+     - Block state ids, indexed ``[t, x, y, z]``.
+   * - ``origins``
+     - int32 ``(T, 3)``
+     - World coordinates of each cube's lowest corner. Cell ``[t, x, y, z]`` is the block at ``origins[t] + (x, y, z)``.
+   * - ``voxel_epoch_ms``
+     - int64 ``(T,)``
+     - Capture time of the cube used for each frame.
+   * - ``action_time_sec``
+     - float64 ``(T,)``
+     - Time of each action (``epochTime`` in the action file).
+   * - ``voxel_delta_sec``
+     - float64 ``(T,)``
+     - Capture time minus action time; at most half a capture interval (25 ms) plus scheduling jitter.
+   * - ``grid_size``
+     - int64 scalar
+     - Cube edge length in blocks.
+   * - ``mc_version``
+     - string scalar
+     - Minecraft version the state ids belong to.
+
+.. code-block:: python
+
+   import numpy as np
+
+   data = np.load("batch_0_000000_Alpha_instance_000_voxels.npz")
+   grids, origins = data["grids"], data["origins"]   # (T, 48, 48, 48), (T, 3)
+
+.. _camera-state-file-format:
+
+Camera state file format
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+``*_camera_state.json`` is written next to every ``*_voxels.npz``. It is a JSON list with one entry per video frame, giving the camera pose in the world coordinates the voxel origins use:
+
+.. code-block:: json
+
+   [
+     {
+       "position": [13136.5, 64.0, -2856.5],
+       "rotation_6d": [0.913496, 0.0, -0.406847, 0.0, 1.0, 0.0],
+       "fov": 77.0
+     }
+   ]
+
+- ``position``: the player position ``x, y, z`` from the action file. This is the feet position; the eye is ``1.62`` blocks higher when standing.
+- ``rotation_6d``: the camera's ``right`` and ``up`` unit vectors in world coordinates, as ``[right_x, right_y, right_z, up_x, up_y, up_z]``. The view direction is ``up × right``.
+- ``fov``: field of view in degrees. It is the constant ``77``: Minecraft's default ``70`` times the ``1.1`` it applies while the player flies, as the camera client does.
+
 .. _run-evals-sh:
 
 ``run_evals.sh``
@@ -486,7 +597,7 @@ This section covers the postprocessing utilities that run as part of :ref:`run.s
 
 `[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/process_recordings.py>`_
 
-Aligns raw Minecraft camera recordings with Mineflayer action episode files for a single bot, producing per-episode aligned camera videos. It can operate on a full directory of episodes or a single episode file.
+Aligns raw Minecraft camera recordings with Mineflayer action episode files for a single bot, producing per-episode aligned camera videos. It can operate on a full directory of episodes or a single episode file. When an episode has a voxel stream next to its action file (collected with ``--record-voxels 1``), it also writes the frame‑aligned voxel cubes and camera poses; otherwise nothing extra is written.
 
 Usage
 ~~~~~
@@ -529,6 +640,8 @@ Output layout
 
 - ``<output-dir>/<episode>_camera.mp4`` — aligned camera video per episode.
 - ``<output-dir>/<episode>_camera_meta.json`` — alignment metadata and diagnostics (including per‑frame mappings and quality stats).
+- ``<output-dir>/<episode>_voxels.npz`` — one voxel cube per aligned frame (see :ref:`Voxel file format <voxel-file-format>`). Only for episodes with a voxel stream.
+- ``<output-dir>/<episode>_camera_state.json`` — camera pose per aligned frame (see :ref:`Camera state file format <camera-state-file-format>`). Only for episodes with a voxel stream.
 
 .. _detect-water-episodes-batch-py:
 
@@ -666,6 +779,8 @@ Output layout
 
 All validated per‑episode files (one video and one action JSON per bot in ``--bots``) are copied into ``<destination-dir>/`` with timestamp prefixes stripped and an optional prefix applied. Only episodes where frame counts match action counts for **every** bot are included.
 
+For those episodes, each bot's ``*_voxels.npz`` and ``*_camera_state.json`` are copied along when they exist, renamed the same way.
+
 .. _split-train-test-py:
 
 ``split_train_test.py``
@@ -781,11 +896,91 @@ Options
    * - ``--limit N``
      - ``10``
      - Maximum number of episodes to process (stratified across instances).
+   * - ``--voxel-cube``
+     - off
+     - Instead of the combined video, write one video per bot: the annotated camera view with a panel showing the voxel cube from a fixed isometric angle, the camera drawn as a frustum. Needs the :ref:`render dependencies <render-voxels-py>`.
+   * - ``--voxel-pov``
+     - off
+     - Like ``--voxel-cube``, but the panel renders the voxels from the recorded camera pose, so it should match the camera view. Takes precedence when both flags are given.
+   * - ``--voxel-dir PATH``
+     - next to the videos
+     - Directory holding the ``*_voxels.npz`` and ``*_camera_state.json`` files.
+   * - ``--state-names PATH``
+     - ``None``
+     - JSON table ``{stateId: blockName}`` used to color the blocks (see :ref:`Voxel file format <voxel-file-format>`). Without it, a ``state_names.json`` next to or above the voxel files is used if present; otherwise each state id gets a fixed arbitrary color.
 
 Output layout
 ~~~~~~~~~~~~~
 
 Writes combined debug videos (one row per player, stacked vertically in alphabetical bot‑name order) under an ``annotated/`` subdirectory (or the directory specified via ``--output-dir``).
+
+With ``--voxel-cube`` or ``--voxel-pov`` it writes ``<episode>_<Bot>_voxel_cube.mp4`` or ``<episode>_<Bot>_voxel_pov.mp4`` to the same place instead, one per bot video.
+
+.. _render-voxels-py:
+
+``render_voxels.py``
+--------------------
+
+`[Source] <https://github.com/solaris-wm/solaris-engine/blob/dev/postprocess/render_voxels.py>`_
+
+Renders the recorded voxel cubes of one episode next to its camera video, as a visual check that voxels, camera poses and video are aligned. It is optional: :ref:`run.sh <run-sh>` never calls it, and collection and dataset preparation work without it.
+
+The renderer runs on the GPU with `PyTorch3D <https://pytorch3d.org/>`_, which is not part of ``env.yaml``. Install ``torch`` and a matching PyTorch3D build as described in ``postprocess/requirements-render.txt``, in a separate environment if your ``SolarisEngine`` environment has a Python or ``torch`` version PyTorch3D does not support.
+
+Usage
+~~~~~
+
+.. code-block:: bash
+
+   python postprocess/render_voxels.py --npz EPISODE_voxels.npz --video EPISODE_camera.mp4 \
+       --camera-state EPISODE_camera_state.json --out OUT.mp4 [OPTIONS]
+
+Options
+~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 15 55
+
+   * - Option
+     - Default
+     - Description
+   * - ``--npz PATH``
+     - (required)
+     - Aligned ``*_voxels.npz`` of the episode.
+   * - ``--video PATH``
+     - (required)
+     - Aligned camera video of the same episode and bot.
+   * - ``--out PATH``
+     - (required)
+     - Output ``.mp4``.
+   * - ``--mode {pov,cube,both}``
+     - ``pov``
+     - ``pov`` renders the voxels from the recorded camera pose, so the result should match the camera video. ``cube`` shows the whole cube from a fixed isometric angle, with the camera drawn as a frustum. ``both`` writes the two as separate files.
+   * - ``--camera-state PATH``
+     - ``None``
+     - Aligned ``*_camera_state.json``. Required for ``pov`` and ``both``; in ``cube`` mode it adds the frustum.
+   * - ``--state-names PATH``
+     - ``None``
+     - JSON table ``{stateId: blockName}`` used to color the blocks. Without it, a ``state_names.json`` next to or above the ``.npz`` is used if present; otherwise each state id gets a fixed arbitrary color.
+   * - ``--max-frames N``
+     - ``100000``
+     - Render at most ``N`` frames, spread evenly over the episode.
+   * - ``--fps N``
+     - ``20.0``
+     - Frame rate of the output video.
+   * - ``--eye-height BLOCKS``
+     - ``1.62``
+     - (``pov``) Camera height above the recorded feet position.
+   * - ``--fov DEGREES``
+     - ``77``
+     - (``pov``) Field of view of the rendering camera, in degrees.
+
+Output layout
+~~~~~~~~~~~~~
+
+- ``<out>`` — the camera video and the voxel render side by side.
+- With ``--mode both``: ``<out>_pov.mp4`` and ``<out>_cube.mp4`` (the suffix goes before the file extension).
 
 Docker Orchestration
 --------------------
@@ -851,7 +1046,7 @@ Options
      - Shared output directory for controller/act_recorder episode outputs.
    * - ``--num_players N``
      - ``2``
-     - Number of player bots per instance, from 2 to 8: each player's camera takes one of the 8 NVENC sessions per GPU, and the instance count is capped at ``floor(8 / N)``. Lengths of all per‑player list flags below must match this value.
+     - Number of player bots per instance, from 1 to 8: each player's camera takes one of the 8 NVENC sessions per GPU, and the instance count is capped at ``floor(8 / N)``. Lengths of all per‑player list flags below must match this value.
    * - ``--skins NAME [NAME ...]``
      - lookup by player name
      - One skin filename per player. When omitted, falls back to the project's default-skin lookup (Alpha, Bravo, Charlie are bundled; supplying ``--skins`` is required for ``--num_players > 3``).
@@ -897,6 +1092,15 @@ Options
    * - ``--episode_types STR``
      - ``all``
      - Comma‑separated episode types for controllers.
+   * - ``--record_voxels {0,1}``
+     - ``0``
+     - When ``1``, controllers record the voxel cube around their player during every episode (see :ref:`Voxel file format <voxel-file-format>`).
+   * - ``--voxel_grid N``
+     - ``48``
+     - Edge length of the voxel cube, in blocks. Used only with ``--record_voxels 1``.
+   * - ``--voxel_interval MS``
+     - ``50``
+     - Time between voxel captures, in milliseconds (``50`` = 20 Hz). Used only with ``--record_voxels 1``.
    * - ``--viewer_rendering_disabled {0,1}``
      - ``1``
      - Disable viewer rendering for controller/act_recorder (recommended for speed).
