@@ -285,8 +285,9 @@ function getOnMinePhaseFn(
   args,
   phaseDataOur,
 ) {
-  return async function onMinePhase(phaseDataOther) {
-    coordinator.sendToOtherBot(
+  return async function onMinePhase(peerMap) {
+    const peerData = peerMap.values().next().value;
+    coordinator.broadcastToPeers(
       `minePhase_${iterationID}`,
       phaseDataOur,
       episodeNum,
@@ -302,12 +303,13 @@ function getOnMinePhaseFn(
     console.log(`[${bot.username}] ✅ STEP 1: Bot spawned`);
 
     // STEP 2: Initial eye contact
+    const peerName = coordinator.getSinglePeerName();
     console.log(
-      `[${bot.username}] 👀 STEP 2: Making eye contact with ${args.other_bot_name}...`,
+      `[${bot.username}] 👀 STEP 2: Making eye contact with ${peerName}...`,
     );
     let actualOtherBotPosition = null;
     try {
-      const otherEntity = bot.players[args.other_bot_name]?.entity;
+      const otherEntity = bot.players[peerName]?.entity;
       if (otherEntity) {
         actualOtherBotPosition = otherEntity.position.clone();
         const targetPos = otherEntity.position.offset(0, otherEntity.height, 0);
@@ -317,13 +319,13 @@ function getOnMinePhaseFn(
         console.log(
           `[${bot.username}] ⚠️ Could not find other bot entity, using passed position`,
         );
-        actualOtherBotPosition = phaseDataOther.position.clone();
+        actualOtherBotPosition = peerData.position.clone();
       }
     } catch (lookError) {
       console.log(
         `[${bot.username}] ⚠️ Could not look at other bot: ${lookError.message}`,
       );
-      actualOtherBotPosition = phaseDataOther.position.clone();
+      actualOtherBotPosition = peerData.position.clone();
     }
 
     // STEP 3: Equip mining tool
@@ -355,9 +357,9 @@ function getOnMinePhaseFn(
       phaseDataOur.position.z,
     );
     const otherUndergroundPos = new Vec3(
-      phaseDataOther.position.x,
-      phaseDataOther.position.y - UNDERGROUND_DEPTH,
-      phaseDataOther.position.z,
+      peerData.position.x,
+      peerData.position.y - UNDERGROUND_DEPTH,
+      peerData.position.z,
     );
 
     const midpoint = new Vec3(
@@ -403,7 +405,7 @@ function getOnMinePhaseFn(
     // STEP 7: Final eye contact
     console.log(`[${bot.username}] 👀 STEP 7: Final eye contact...`);
     try {
-      const otherEntity2 = bot.players[args.other_bot_name]?.entity;
+      const otherEntity2 = bot.players[peerName]?.entity;
       if (otherEntity2) {
         const targetPos = otherEntity2.position.offset(
           0,
@@ -425,24 +427,19 @@ function getOnMinePhaseFn(
     );
 
     // STEP 8: Transition to stop phase (end episode)
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      phaseDataOur,
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      phaseDataOur,
-      episodeNum,
-      `minePhase_${iterationID} end`,
+      { location: `minePhase_${iterationID} end` },
     );
 
     return miningResult;
@@ -465,7 +462,7 @@ class MineEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     console.log(`[${bot.username}] 🔧 Setting up Mine Episode 2 (Pathfinder)`);
 
@@ -475,10 +472,7 @@ class MineEpisode extends BaseEpisode {
     await sleep(500);
     console.log(`[${bot.username}] ✅ Gave 64 torches`);
 
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -494,8 +488,9 @@ class MineEpisode extends BaseEpisode {
       position: bot.entity.position.clone(),
     };
 
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `minePhase_${iterationID}`,
+      phaseDataOur,
       episodeNum,
       getOnMinePhaseFn(
         bot,
@@ -508,12 +503,7 @@ class MineEpisode extends BaseEpisode {
         args,
         phaseDataOur,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `minePhase_${iterationID}`,
-      phaseDataOur,
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 

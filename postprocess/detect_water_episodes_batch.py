@@ -5,8 +5,8 @@ Batch detect water episodes by detecting the oxygen bar HUD element in video fra
 This script uses multiprocessing to process all video files in all
 batch directories and outputs JSON files categorizing episodes as water or non-water.
 
-Episodes are processed as Alpha-Bravo pairs - if either video shows underwater indicators,
-the entire pair is classified as a water episode.
+Episodes are processed as N-player groups - if any player's video shows underwater
+indicators, the entire episode is classified as a water episode.
 """
 
 import argparse
@@ -41,28 +41,22 @@ class VideoAnalysisResult:
 
 @dataclass
 class EpisodePairResult:
-    """Result for an Alpha-Bravo episode pair."""
+    """Result for an N-player episode."""
 
     episode_id: str
     instance_id: str
-    alpha_filename: Optional[str]
-    bravo_filename: Optional[str]
-    alpha_top_percentile: Optional[float]
-    bravo_top_percentile: Optional[float]
-    alpha_top_5_frames: Optional[List[int]]
-    bravo_top_5_frames: Optional[List[int]]
+    bot_filenames: Dict[str, Optional[str]]
+    bot_top_percentiles: Dict[str, Optional[float]]
+    bot_top_5_frames: Dict[str, Optional[List[int]]]
     is_water_episode: bool
 
     def to_dict(self) -> dict:
         return {
             "episode_id": self.episode_id,
             "instance_id": self.instance_id,
-            "alpha_filename": self.alpha_filename,
-            "bravo_filename": self.bravo_filename,
-            "alpha_top_percentile_similarity": self.alpha_top_percentile,
-            "bravo_top_percentile_similarity": self.bravo_top_percentile,
-            "alpha_top_5_frame_numbers": self.alpha_top_5_frames,
-            "bravo_top_5_frame_numbers": self.bravo_top_5_frames,
+            "bot_filenames": self.bot_filenames,
+            "bot_top_percentile_similarity": self.bot_top_percentiles,
+            "bot_top_5_frame_numbers": self.bot_top_5_frames,
         }
 
 
@@ -76,7 +70,7 @@ def parse_video_filename(filename: str) -> Optional[Dict[str, str]]:
         Dict with keys: datetime, episode_id, role, instance_id
         Or None if parsing fails
     """
-    pattern = r"^(\d{8}_\d{6})_(\d{6})_(Alpha|Bravo)_instance_(\d{3})_camera\.mp4$"
+    pattern = r"^(\d{8}_\d{6})_(\d{6})_([A-Z][a-z]+)_instance_(\d{3})_camera\.mp4$"
     match = re.match(pattern, filename)
 
     if match:
@@ -227,10 +221,10 @@ def group_videos_by_episode_pair(
     video_files: List[str],
 ) -> Dict[Tuple[str, str], Dict[str, str]]:
     """
-    Group video files by episode ID and instance ID pairs.
+    Group video files by episode ID and instance ID.
 
     Returns:
-        Dict mapping (episode_id, instance_id) -> {"Alpha": filename, "Bravo": filename}
+        Dict mapping (episode_id, instance_id) -> {bot_name: filename}
     """
     pairs: Dict[Tuple[str, str], Dict[str, str]] = {}
 
@@ -243,11 +237,7 @@ def group_videos_by_episode_pair(
             continue
 
         key = (parsed["episode_id"], parsed["instance_id"])
-
-        if key not in pairs:
-            pairs[key] = {"Alpha": None, "Bravo": None}
-
-        pairs[key][parsed["role"]] = video_file
+        pairs.setdefault(key, {})[parsed["role"]] = video_file
 
     return pairs
 
@@ -288,12 +278,7 @@ def process_batch_folder(
     print(f"  Found {len(episode_pairs)} episode pairs")
 
     # Prepare tasks for multiprocessing
-    all_video_paths = []
-    for pair_files in episode_pairs.values():
-        if pair_files["Alpha"]:
-            all_video_paths.append(pair_files["Alpha"])
-        if pair_files["Bravo"]:
-            all_video_paths.append(pair_files["Bravo"])
+    all_video_paths = [path for bot_files in episode_pairs.values() for path in bot_files.values()]
 
     # Create task arguments
     tasks = [
@@ -319,47 +304,33 @@ def process_batch_folder(
     for result in results:
         results_by_filename[result.filename] = result
 
-    # Categorize episode pairs
+    # Categorize episodes
     water_episodes: List[EpisodePairResult] = []
     non_water_episodes: List[EpisodePairResult] = []
 
-    for (episode_id, instance_id), pair_files in episode_pairs.items():
-        alpha_filename = (
-            os.path.basename(pair_files["Alpha"]) if pair_files["Alpha"] else None
-        )
-        bravo_filename = (
-            os.path.basename(pair_files["Bravo"]) if pair_files["Bravo"] else None
-        )
-
-        alpha_result = (
-            results_by_filename.get(alpha_filename) if alpha_filename else None
-        )
-        bravo_result = (
-            results_by_filename.get(bravo_filename) if bravo_filename else None
-        )
-
-        alpha_top_pct = alpha_result.top_percentile_similarity if alpha_result else None
-        bravo_top_pct = bravo_result.top_percentile_similarity if bravo_result else None
-
-        alpha_top_5_frames = alpha_result.top_5_frame_numbers if alpha_result else None
-        bravo_top_5_frames = bravo_result.top_5_frame_numbers if bravo_result else None
-
-        # Episode is water if either Alpha or Bravo exceeds threshold
+    for (episode_id, instance_id), bot_files in episode_pairs.items():
+        bot_filenames: Dict[str, Optional[str]] = {}
+        bot_top_percentiles: Dict[str, Optional[float]] = {}
+        bot_top_5_frames: Dict[str, Optional[List[int]]] = {}
         is_water = False
-        if alpha_top_pct is not None and alpha_top_pct >= threshold:
-            is_water = True
-        if bravo_top_pct is not None and bravo_top_pct >= threshold:
-            is_water = True
+        for bot_name, video_path in bot_files.items():
+            filename = os.path.basename(video_path) if video_path else None
+            result = results_by_filename.get(filename) if filename else None
+            top_pct = result.top_percentile_similarity if result else None
+            top_5 = result.top_5_frame_numbers if result else None
+            bot_filenames[bot_name] = filename
+            bot_top_percentiles[bot_name] = top_pct
+            bot_top_5_frames[bot_name] = top_5
+            # Episode is water if any bot exceeds threshold
+            if top_pct is not None and top_pct >= threshold:
+                is_water = True
 
         pair_result = EpisodePairResult(
             episode_id=episode_id,
             instance_id=instance_id,
-            alpha_filename=alpha_filename,
-            bravo_filename=bravo_filename,
-            alpha_top_percentile=alpha_top_pct,
-            bravo_top_percentile=bravo_top_pct,
-            alpha_top_5_frames=alpha_top_5_frames,
-            bravo_top_5_frames=bravo_top_5_frames,
+            bot_filenames=bot_filenames,
+            bot_top_percentiles=bot_top_percentiles,
+            bot_top_5_frames=bot_top_5_frames,
             is_water_episode=is_water,
         )
 

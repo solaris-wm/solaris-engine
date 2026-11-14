@@ -13,25 +13,25 @@ function getOnTurnToLookOppositePhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
+  return async (peerMap) => {
     bot.pathfinder.setGoal(null);
     bot.clearControlStates();
     await bot.waitForTicks(2);
 
-    coordinator.sendToOtherBot(
+    coordinator.broadcastToPeers(
       "turnToLookOppositePhase",
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       "turnToLookOppositePhase beginning",
     );
 
-    const otherName = args.other_bot_name;
+    const otherName = coordinator.getSinglePeerName();
     const other = bot.players[otherName]?.entity;
     if (!other) {
       console.log(`[${bot.username}] Other bot missing, skipping.`);
-      coordinator.sendToOtherBot(
+      coordinator.broadcastToPeers(
         "stopPhase",
-        bot.entity.position.clone(),
+        { position: bot.entity.position.clone() },
         episodeNum,
         "missing other bot",
       );
@@ -95,25 +95,19 @@ function getOnTurnToLookOppositePhaseFn(
     }
 
     // ---- Phase 5: Stop phase ----
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "turnToLookOppositePhase end",
+      { location: "turnToLookOppositePhase end" },
     );
   };
 }
@@ -135,8 +129,9 @@ class TurnToLookOppositeEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "turnToLookOppositePhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnTurnToLookOppositePhaseFn(
         bot,
@@ -147,13 +142,7 @@ class TurnToLookOppositeEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-
-    coordinator.sendToOtherBot(
-      "turnToLookOppositePhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }

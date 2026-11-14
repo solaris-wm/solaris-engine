@@ -11,16 +11,38 @@ const { makeBot } = require("./utils/bot-factory");
 const { BotCoordinator } = require("./utils/coordination");
 const { sleep } = require("./utils/helpers");
 
+function parsePeerEndpoints(peerEndpoints) {
+  if (!peerEndpoints) {
+    throw new Error(
+      "peer_endpoints is required; entrypoint must pass Name:host:port entries for all peers",
+    );
+  }
+  return peerEndpoints
+    .split(",")
+    .map((endpoint) => endpoint.trim())
+    .filter(Boolean)
+    .map((endpoint) => {
+      const [name, host, port] = endpoint.split(":");
+      if (!name || !host || !port) {
+        throw new Error(
+          `Invalid peer endpoint "${endpoint}". Expected Name:host:port`,
+        );
+      }
+      return { name, host, port: Number(port) };
+    });
+}
+
 /**
  * Main function to initialize and run the bot
  */
 async function main() {
   // Parse command line arguments
   const args = parseArgs();
+  const peers = parsePeerEndpoints(args.peer_endpoints);
 
   console.log(`Starting bot: ${args.bot_name}`);
   console.log(
-    `Coordinator: ${args.bot_name}, Ports: ${args.coord_port}/${args.other_coord_port}`,
+    `Coordinator: ${args.bot_name}, Port: ${args.coord_port}, Peers: ${peers.map((p) => `${p.name}@${p.host}:${p.port}`).join(",")}`,
   );
   console.log(
     `[${args.bot_name}] Waiting ${args.bootstrap_wait_time} seconds before creating bot...`,
@@ -37,13 +59,7 @@ async function main() {
     version: args.mc_version,
   });
 
-  // Initialize shared RNG and coordinator
-  const coordinator = new BotCoordinator(
-    args.bot_name,
-    args.coord_port,
-    args.other_coord_host,
-    args.other_coord_port,
-  );
+  const coordinator = new BotCoordinator(args.bot_name, args.coord_port, peers);
 
   // Set up spawn event handler
   bot.once(

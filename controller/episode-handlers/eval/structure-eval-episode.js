@@ -153,10 +153,12 @@ function getOnStructureEvalPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async function onStructureEvalPhase(otherBotPosition) {
-    coordinator.sendToOtherBot(
+  return async function onStructureEvalPhase(peerMap) {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       `structureEvalPhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `structureEvalPhase_${iterationID} beginning`,
     );
@@ -188,9 +190,9 @@ function getOnStructureEvalPhaseFn(
     // Determine if this bot is the builder based on the randomly selected mode
     let isBuilder;
     if (selectedRoleMode === "alpha_builds") {
-      isBuilder = bot.username < args.other_bot_name; // Alpha (lower name) builds
+      isBuilder = bot.username < peerName; // Alpha (lower name) builds
     } else {
-      isBuilder = bot.username >= args.other_bot_name; // Bravo (higher name) builds
+      isBuilder = bot.username >= peerName; // Bravo (higher name) builds
     }
 
     const role = isBuilder ? "BUILDER" : "OBSERVER";
@@ -256,10 +258,10 @@ function getOnStructureEvalPhaseFn(
     // STEP 2: Initial eye contact (BUILDER only, observer remains stationary)
     if (isBuilder) {
       console.log(
-        `[${bot.username}] 👀 STEP 2: Making eye contact with ${args.other_bot_name}...`,
+        `[${bot.username}] 👀 STEP 2: Making eye contact with ${peerName}...`,
       );
       try {
-        const otherEntity = bot.players[args.other_bot_name]?.entity;
+        const otherEntity = bot.players[peerName]?.entity;
         if (otherEntity) {
           const targetPos = otherEntity.position.offset(
             0,
@@ -301,8 +303,8 @@ function getOnStructureEvalPhaseFn(
     );
 
     // Record important episode metadata (like translation-eval-episode.js)
-    const builderBotName = isBuilder ? bot.username : args.other_bot_name;
-    const observerBotName = isBuilder ? args.other_bot_name : bot.username;
+    const builderBotName = isBuilder ? bot.username : peerName;
+    const observerBotName = isBuilder ? peerName : bot.username;
     episodeInstance._evalMetadata = {
       structure_type: structureType,
       block_type: blockType,
@@ -478,24 +480,19 @@ function getOnStructureEvalPhaseFn(
     console.log(`[${bot.username}] ✅ STRUCTURE EVAL phase complete!`);
 
     // Transition to stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      `structureEvalPhase_${iterationID} end`,
+      { location: `structureEvalPhase_${iterationID} end` },
     );
 
     return buildResult;
@@ -524,16 +521,13 @@ class StructureEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     for (const blockType of BUILD_BLOCK_TYPES) {
       await ensureBotHasEnough(bot, rcon, blockType, 64);
     }
     await unequipHand(bot);
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -545,8 +539,9 @@ class StructureEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `structureEvalPhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnStructureEvalPhaseFn(
         bot,
@@ -558,12 +553,7 @@ class StructureEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `structureEvalPhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 

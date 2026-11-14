@@ -251,8 +251,9 @@ function getOnPVEFightPhaseFn(
   args,
   phaseDataOur,
 ) {
-  return async (phaseDataOther) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const peerData = peerMap.values().next().value;
+    coordinator.broadcastToPeers(
       `pvePhase_fight_${iterationID}`,
       phaseDataOur,
       episodeNum,
@@ -262,14 +263,14 @@ function getOnPVEFightPhaseFn(
     await sleep(1000);
     const distToOther = horizontalDistanceTo(
       phaseDataOur.guardPosition,
-      phaseDataOther.guardPosition,
+      peerData.guardPosition,
     );
     const mobDistMax = distToOther / 4;
     const mobDistMin = mobDistMax / 2;
 
     // Use guard-based combat: guard our position and look at other bot's position
     const ourGuardPosition = phaseDataOur.guardPosition;
-    const otherGuardPosition = phaseDataOther.guardPosition;
+    const otherGuardPosition = peerData.guardPosition;
     const numMobs =
       Math.floor(sharedBotRng() * (MAX_MOBS - MIN_MOBS + 1)) + MIN_MOBS;
     for (let mobI = 0; mobI < numMobs; mobI++) {
@@ -308,24 +309,19 @@ function getOnPVEFightPhaseFn(
         )}/20 food=${bot.food}`,
       );
     }
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        args.other_bot_name,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      `pvePhase_${iterationID} end`,
+      { location: `pvePhase_${iterationID} end` },
     );
   };
 }
@@ -338,8 +334,8 @@ function getOnPVEPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (phaseDataOther) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    coordinator.broadcastToPeers(
       `pvePhase`,
       { position: bot.entity.position.clone() },
       episodeNum,
@@ -350,8 +346,9 @@ function getOnPVEPhaseFn(
     const nextPhaseDataOur = {
       guardPosition: bot.entity.position.clone(),
     };
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `pvePhase_fight_${iterationID}`,
+      nextPhaseDataOur,
       episodeNum,
       getOnPVEFightPhaseFn(
         bot,
@@ -364,12 +361,7 @@ function getOnPVEPhaseFn(
         args,
         nextPhaseDataOur,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `pvePhase_fight_${iterationID}`,
-      nextPhaseDataOur,
-      episodeNum,
-      `pvePhase end`,
+      { location: `pvePhase end` },
     );
     return;
   };
@@ -393,7 +385,7 @@ class PveEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     const difficultyRes = await rcon.send("difficulty easy"); // or hard
     console.log(
@@ -405,10 +397,7 @@ class PveEpisode extends BaseEpisode {
     await sleep(500);
     await unequipHand(bot);
     await sleep(500);
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -420,8 +409,9 @@ class PveEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `pvePhase`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnPVEPhaseFn(
         bot,
@@ -432,12 +422,7 @@ class PveEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `pvePhase`,
-      { position: bot.entity.position.clone() },
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 

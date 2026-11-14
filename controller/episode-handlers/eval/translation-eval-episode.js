@@ -24,10 +24,12 @@ function getOnWalkLookPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       `walkLookPhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `walkLookPhase_${iterationID} beginning`,
     );
@@ -51,22 +53,22 @@ function getOnWalkLookPhaseFn(
     switch (selectedMode) {
       case "both_bots_walk":
         shouldThisBotWalk = true;
-        botsChosen = [bot.username, args.other_bot_name].sort();
+        botsChosen = [bot.username, peerName].sort();
         break;
       case "lower_name_walks":
-        shouldThisBotWalk = bot.username < args.other_bot_name;
+        shouldThisBotWalk = bot.username < peerName;
         botsChosen = [
-          bot.username < args.other_bot_name
+          bot.username < peerName
             ? bot.username
-            : args.other_bot_name,
+            : peerName,
         ];
         break;
       case "bigger_name_walks":
-        shouldThisBotWalk = bot.username > args.other_bot_name;
+        shouldThisBotWalk = bot.username > peerName;
         botsChosen = [
-          bot.username > args.other_bot_name
+          bot.username > peerName
             ? bot.username
-            : args.other_bot_name,
+            : peerName,
         ];
         break;
     }
@@ -130,30 +132,26 @@ function getOnWalkLookPhaseFn(
 
     if (iterationID == ITERATIONS_NUM_PER_EPISODE - 1) {
       // Setup stop phase
-      coordinator.onceEvent(
+      coordinator.exchangeWithPeers(
         "stopPhase",
+        { position: bot.entity.position.clone() },
         episodeNum,
         episodeInstance.getOnStopPhaseFn(
           bot,
           rcon,
           sharedBotRng,
           coordinator,
-          args.other_bot_name,
           episodeNum,
           args,
         ),
-      );
-      coordinator.sendToOtherBot(
-        "stopPhase",
-        bot.entity.position.clone(),
-        episodeNum,
-        `walkLookPhase_${iterationID} end`,
+        { location: `walkLookPhase_${iterationID} end` },
       );
       return;
     }
     const nextIterationID = iterationID + 1;
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `walkLookPhase_${nextIterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnWalkLookPhaseFn(
         bot,
@@ -165,12 +163,7 @@ function getOnWalkLookPhaseFn(
         episodeInstance,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `walkLookPhase_${nextIterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      `walkLookPhase_${iterationID} end`,
+      { location: `walkLookPhase_${iterationID} end` },
     );
   };
 }
@@ -201,29 +194,16 @@ class TranslationEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
-      `walkLookPhase_${iterationID}`,
-      episodeNum,
-      getOnWalkLookPhaseFn(
-        bot,
-        rcon,
-        sharedBotRng,
-        coordinator,
-        iterationID,
-        episodeNum,
-        this,
-        args,
-      ),
-    );
+    const peerName = coordinator.getSinglePeerName();
     const shouldAlignRng = sharedBotRng();
     const shouldThisBotAlign =
-      bot.username < args.other_bot_name
+      bot.username < peerName
         ? shouldAlignRng < 0.5
         : shouldAlignRng >= 0.5;
     // Make Bravo bot align to Alpha bot's location along one principal axis (shortest distance)
     if (shouldThisBotAlign) {
       const otherBotPosition =
-        bot.players[args.other_bot_name]?.entity.position;
+        bot.players[peerName]?.entity.position;
       // Align to other bot's location along one principal axis (shortest distance)
       const botPos = bot.entity.position;
       const dx = Math.abs(otherBotPosition.x - botPos.x);
@@ -264,16 +244,23 @@ class TranslationEvalEpisode extends BaseEpisode {
         );
       }
       await bot.waitForTicks(5);
-      coordinator.sendToOtherBot(
-        `walkLookPhase_${iterationID}`,
-        bot.entity.position.clone(),
-        episodeNum,
-        "teleportPhase end",
-      );
-    } else {
-      // For the bot not aligning, do nothing.
-      // The episode will start after signaled by the other bot.
     }
+    coordinator.exchangeWithPeers(
+      `walkLookPhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
+      episodeNum,
+      getOnWalkLookPhaseFn(
+        bot,
+        rcon,
+        sharedBotRng,
+        coordinator,
+        iterationID,
+        episodeNum,
+        this,
+        args,
+      ),
+      { location: "entryPoint end" },
+    );
   }
 }
 

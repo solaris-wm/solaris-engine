@@ -6,13 +6,6 @@ function pickRandom(array, sharedBotRng) {
   return sortedArray[Math.floor(sharedBotRng() * sortedArray.length)];
 }
 
-function decidePrimaryBot(bot, sharedBotRng, args) {
-  const primaryBotName = pickRandom(
-    [bot.username, args.other_bot_name],
-    sharedBotRng,
-  );
-  return bot.username === primaryBotName;
-}
 /**
  * RCON teleportation function
  * @param {string} name - Player name
@@ -30,37 +23,40 @@ async function rconTp(rcon, name, x, y, z) {
  * Bot coordination class for inter-bot communication via TCP sockets
  */
 class BotCoordinator extends EventEmitter {
-  constructor(botName, coordPort, otherCoordHost, otherCoordPort) {
+  constructor(botName, coordPort, peers) {
     super();
     this.botName = botName;
     this.coordPort = coordPort;
-    this.otherCoordHost = otherCoordHost;
-    this.otherCoordPort = otherCoordPort;
-    this.clientConnection = null;
+    this.peers = peers; // [{name, host, port}] — N-1 entries, one per remote peer
+    this.clientConnections = new Map(); // peerName -> Socket (outbound to each peer)
     this.server = null;
-    this.executingEvents = new Map(); // Track currently executing event handlers
-    this.eventCounter = 0; // Auto-incrementing counter for unique event tracking
+    this.executingEvents = new Map(); // unique key -> true; in-flight handler tracking for waitForAllPhasesToFinish
+    this.eventCounter = 0; // monotonic; mints unique keys for executingEvents
+    this.pendingBarriers = new Set(); // release fns of syncAllPeers calls still waiting on peers
   }
 
   async setupConnections() {
     console.log(`[${this.botName}] Setting up connections...`);
 
-    // Set up server and client connections in parallel and wait for both to be ready
-    const [serverReady, clientReady] = await Promise.all([
+    const clientPromises = this.peers.map((peer) => this.setupClient(peer));
+    const [serverReady, ...clientsReady] = await Promise.all([
       this.setupServer(),
-      this.setupClient(),
+      ...clientPromises,
     ]);
 
     console.log(
-      `[${this.botName}] All connections established - server ready: ${serverReady}, client ready: ${clientReady}`,
+      `[${this.botName}] All connections established - server ready: ${serverReady}, clients ready: ${clientsReady.length}/${this.peers.length}`,
     );
-    return { serverReady, clientReady };
+    return { serverReady, clientsReady };
   }
 
   setupServer() {
     return new Promise((resolve) => {
+      const expectedPeers = this.peers.length;
+      let connectedPeers = 0;
+
       this.server = net.createServer((socket) => {
-        console.log(`[${this.botName} Server] Other bot connected`);
+        console.log(`[${this.botName} Server] Peer connected`);
         let buffer = "";
 
         socket.on("data", (data) => {
@@ -75,15 +71,16 @@ class BotCoordinator extends EventEmitter {
             if (line.trim()) {
               try {
                 const message = JSON.parse(line);
-                const listenerCount = this.listenerCount(message.eventName);
+                const { eventName, eventParams, from } = message;
+                const listenerCount = this.listenerCount(eventName);
                 if (listenerCount > 0) {
                   console.log(
-                    `[${this.botName} Server] Received: ${message.eventName} (${listenerCount} listeners) - emitting`,
+                    `[${this.botName} Server] Received: ${eventName} from ${from} (${listenerCount} listeners) - emitting`,
                   );
-                  this.emit(message.eventName, message.eventParams);
+                  this.emit(eventName, eventParams, from);
                 } else {
                   console.log(
-                    `[${this.botName} Server] Received: ${message.eventName} (no listeners)`,
+                    `[${this.botName} Server] Received: ${eventName} from ${from} (no listeners) - dropped`,
                   );
                 }
               } catch (err) {
@@ -101,45 +98,50 @@ class BotCoordinator extends EventEmitter {
           });
         });
         socket.on("close", () => {
-          console.log(`[${this.botName} Server] Other bot disconnected`);
+          console.log(`[${this.botName} Server] Peer disconnected`);
         });
 
-        // Resolve when the other bot connects to our server
-        resolve(true);
+        connectedPeers++;
+        if (connectedPeers === expectedPeers) {
+          resolve(true);
+        }
       });
 
       this.server.listen(this.coordPort, () => {
         console.log(
-          `[${this.botName} Server] Listening on port ${this.coordPort}, waiting for other bot to connect...`,
+          `[${this.botName} Server] Listening on port ${this.coordPort}, waiting for ${expectedPeers} peer(s) to connect...`,
         );
       });
     });
   }
 
-  setupClient() {
+  setupClient(peer) {
     return new Promise((resolve) => {
       const attemptConnection = () => {
-        this.clientConnection = net.createConnection(
-          { host: this.otherCoordHost, port: this.otherCoordPort },
+        const socket = net.createConnection(
+          { host: peer.host, port: peer.port },
           () => {
             console.log(
-              `[${this.botName} Client] Connected to other bot's server at ${this.otherCoordHost}:${this.otherCoordPort}`,
+              `[${this.botName} Client] Connected to ${peer.name} at ${peer.host}:${peer.port}`,
             );
+            this.clientConnections.set(peer.name, socket);
             resolve(true);
           },
         );
 
-        this.clientConnection.on("error", (err) => {
+        socket.on("error", (err) => {
           console.log(
-            `[${this.botName} Client] Connection failed, retrying in 2s:`,
+            `[${this.botName} Client] Connection to ${peer.name} failed, retrying in 2s:`,
             err.message,
           );
           setTimeout(attemptConnection, 2000);
         });
 
-        this.clientConnection.on("close", () => {
-          console.log(`[${this.botName} Client] Disconnected from other bot`);
-          this.clientConnection = null;
+        socket.on("close", () => {
+          console.log(
+            `[${this.botName} Client] Disconnected from ${peer.name}`,
+          );
+          this.clientConnections.delete(peer.name);
           setTimeout(attemptConnection, 2000); // Auto-reconnect
         });
       };
@@ -148,18 +150,25 @@ class BotCoordinator extends EventEmitter {
     });
   }
 
-  sendToOtherBot(eventName, eventParams, episodeNum, location) {
+  broadcastToPeers(eventName, eventParams, episodeNum, location) {
     eventName = getEventName(eventName, episodeNum);
-    if (this.clientConnection) {
-      const message = JSON.stringify({ eventName, eventParams });
+    const peerNames = [...this.clientConnections.keys()];
+    if (peerNames.length === 0) {
       console.log(
-        `[sendToOtherBot] ${location}: Sending ${eventName} via client connection`,
+        `[broadcastToPeers] ${location}: No peer connections available for ${eventName}`,
       );
-      this.clientConnection.write(message + "\n");
-    } else {
-      console.log(
-        `[sendToOtherBot] ${location}: No client connection available for ${eventName}`,
-      );
+      return;
+    }
+    const message = JSON.stringify({
+      eventName,
+      eventParams,
+      from: this.botName,
+    });
+    console.log(
+      `[broadcastToPeers] ${location}: Sending ${eventName} to ${peerNames.join(", ")}`,
+    );
+    for (const socket of this.clientConnections.values()) {
+      socket.write(message + "\n");
     }
   }
 
@@ -184,11 +193,66 @@ class BotCoordinator extends EventEmitter {
     this.once(fullEventName, wrappedHandler);
   }
 
+  exchangeWithPeers(eventName, eventParams, episodeNum, handler, { location }) {
+    const fullEventName = getEventName(eventName, episodeNum);
+    const eventId = this.eventCounter++;
+    const uniqueKey = `${fullEventName}_${eventId}`;
+    const expectedPeers = this.peers.length;
+    const peerMap = new Map();
+
+    const accumulate = async (params, from) => {
+      peerMap.set(from, params);
+      if (peerMap.size === expectedPeers) {
+        this.off(fullEventName, accumulate);
+        this.executingEvents.set(uniqueKey, true);
+        try {
+          await handler(peerMap);
+        } finally {
+          this.executingEvents.delete(uniqueKey);
+        }
+      }
+    };
+
+    this.on(fullEventName, accumulate);
+    this.broadcastToPeers(eventName, eventParams, episodeNum, location);
+  }
+
+  syncAllPeers(eventName, eventParams, episodeNum, { location }) {
+    return new Promise((resolve) => {
+      const release = (peerMap) => {
+        this.pendingBarriers.delete(release);
+        resolve(peerMap);
+      };
+      this.pendingBarriers.add(release);
+      this.exchangeWithPeers(
+        eventName,
+        eventParams,
+        episodeNum,
+        (peerMap) => {
+          this.broadcastToPeers(eventName, eventParams, episodeNum, location);
+          release(peerMap);
+        },
+        { location },
+      );
+    });
+  }
+
+  getAllPlayerNames() {
+    return [this.botName, ...this.peers.map((p) => p.name)].sort();
+  }
+
+  getSinglePeerName() {
+    return this.peers[0].name;
+  }
+
   async waitForAllPhasesToFinish() {
     let lastLogTime = 0;
     const logIntervalMs = 2000;
 
     while (this.executingEvents.size > 0) {
+      // The episode has stopped, so a handler still blocked on a barrier will never
+      // hear from its peers (one errored or they moved on); let it run to completion.
+      for (const release of this.pendingBarriers) release(new Map());
       const now = Date.now();
 
       if (now - lastLogTime >= logIntervalMs) {
@@ -204,17 +268,6 @@ class BotCoordinator extends EventEmitter {
     }
     console.log(`[${this.botName}] All event handlers finished`);
   }
-
-  async syncBots(episodeNum) {
-    return new Promise((resolve) => {
-      this.onceEvent("syncBots", episodeNum, () => {
-        this.sendToOtherBot("syncBots", {}, episodeNum, `syncBots beginning`);
-        console.log(`[${this.botName}] Syncing bots...`);
-        resolve();
-      });
-      this.sendToOtherBot("syncBots", {}, episodeNum, `syncBots outer`);
-    });
-  }
 }
 
 function getEventName(eventName, episodeNum) {
@@ -224,6 +277,5 @@ function getEventName(eventName, episodeNum) {
 module.exports = {
   rconTp,
   BotCoordinator,
-  decidePrimaryBot,
   pickRandom,
 };

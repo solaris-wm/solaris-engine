@@ -7,7 +7,7 @@ Episode Types
 Training
 --------
 
-Below are the 14 training episode types and what they do.
+Below are the 14 base training episode types plus three N-player variants. The base episodes assume two participants ("one bot does X, the other observes") and run only with ``--num-players 2``. The three episode types whose name ends in ``Np`` (``chaseNp``, ``walkLookNp``, ``buildTowerNp``) are explicit N-player generalisations of their base counterparts; with more than 2 players they are the only types scheduled.
 
 :js:class:`straightLineWalk <episode-handlers.straight-line-episode.StraightLineEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -22,6 +22,7 @@ Below are the 14 training episode types and what they do.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **What**: One bot runs away in a zig-zag pattern, and the other bot pursues it.
+- **Player count**: 2 only. See ``chaseNp`` for the N-player variant.
 - **Notable parameters**:
 
   - Chase duration: 5–15s.
@@ -29,6 +30,12 @@ Below are the 14 training episode types and what they do.
     from the chaser's initial position).
   - Chaser updates GoalNear roughly once per second and keeps the runner in view
     periodically.
+
+:js:class:`chaseNp <episode-handlers.chase-np-episode.ChaseNpEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: N-player generalisation of ``chase``. One bot is the runner; the remaining ``N-1`` bots all chase it. Same escape geometry as ``chase``; each chaser updates its own GoalNear independently.
+- **Player count**: any ``N >= 2``.
 
 :js:class:`orbit <episode-handlers.orbit-episode.OrbitEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -44,10 +51,18 @@ Below are the 14 training episode types and what they do.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **What**: The episode consists of iterations where one or both bots move in a random direction with just WASD actions in front of each other.
+- **Player count**: 2 only. See ``walkLookNp`` for the N-player variant.
 - **Notable parameters**:
 
   - Iterations per episode: 3.
   - Random-walk actions per iteration: 2–4.
+
+:js:class:`walkLookNp <episode-handlers.walk-look-np-episode.WalkLookNpEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: N-player generalisation of ``walkLook``. Same iteration structure: each iteration randomly picks a subset of bots to move with WASD while the others observe.
+- **Player count**: any ``N >= 2``.
+- **Notable parameters**: same as ``walkLook``.
 
 :js:class:`walkLookAway <episode-handlers.walk-look-away-episode.WalkLookAwayEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -98,12 +113,20 @@ Below are the 14 training episode types and what they do.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **What**: Both bots build a tall 1-block tower by jumping and placing blocks underneath themselves.
+- **Player count**: 2 only. See ``buildTowerNp`` for the N-player variant.
 - **Setup**: Gives blocks for building.
 - **Notable parameters**:
 
   - Spawn distance constraints: 8–15 blocks.
   - Tower height: 8–12 blocks.
   - Block type: ``oak_planks``.
+
+:js:class:`buildTowerNp <episode-handlers.build-tower-np-episode.BuildTowerNpEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: N-player generalisation of ``buildTower``. All ``N`` bots simultaneously jump-and-place towers; eye-contact aim is computed against the centroid of the other bots' eye positions so the gaze still looks intentional.
+- **Player count**: any ``N >= 2``.
+- **Notable parameters**: same as ``buildTower``.
 
 :js:class:`mine <episode-handlers.mine-episode.MineEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -164,7 +187,7 @@ Below are the 14 training episode types and what they do.
 Eval
 ----
 
-Below are the 7 eval episode types and what they do.
+Below are the 7 eval episode types and what they do. All of them are 2-player only.
 
 :js:class:`structureEval <episode-handlers.eval.structure-eval-episode.StructureEvalEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -248,16 +271,24 @@ Adding a new episode type
 
 To add a new episode type:
 
-1. **Create the handler module** in `controller/episode-handlers/ <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episode-handlers>`_ (or
-   `controller/episode-handlers/eval/ <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episode-handlers/eval>`_ for eval episodes). The module must export a
+1. **Create the handler module** in ``controller/episode-handlers/`` (or
+   ``controller/episode-handlers/eval/`` for eval episodes). The module must export a
    class that extends :js:class:`episode-handlers.base-episode.BaseEpisode`.
 
-2. **Register the episode in** `controller/episodes-loop.js <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/episodes-loop.js>`_:
+2. **Register the episode in** ``controller/episodes-loop.js``:
+
    - Add an entry to ``episodeClassMap`` mapping the episode type string (e.g. ``myNewEpisode``) to your class.
    - For eval episodes only: add your class to the ``evalEpisodeClasses`` array.
    - To include it in the default set when ``EPISODE_TYPES`` is unset, add the type string to ``defaultEpisodeTypes``.
 
-3. **Add a typical length** in `controller/utils/episode-weights.js <https://github.com/solaris-wm/solaris-engine/blob/dev/controller/utils/episode-weights.js>`_: add your
+3. **Add a typical length** in ``controller/utils/episode-weights.js``: add your
    episode type key and a typical duration in seconds to ``episodeTypicalLengths``.
    This is used for weighted sampling (shorter episodes are sampled more often). If
    the type is missing, ``selectWeightedEpisodeType()`` will throw.
+
+4. **Declare eligibility via class statics** (all optional):
+
+   - ``WORKS_IN_NON_FLAT_WORLD = true`` — allows the episode to be scheduled in normal
+     (non-flat) worlds; by default episodes only run in flatland worlds.
+   - ``SUPPORTS_N_PLAYER = true`` — marks the episode as safe for more than 2 players;
+     with ``--num-players > 2`` only episode types carrying this flag are scheduled.

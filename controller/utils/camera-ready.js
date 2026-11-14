@@ -72,13 +72,14 @@ function extractPlayers(listResponse) {
 }
 
 /**
- * Wait for both camera clients to join the Minecraft server
+ * Wait for all camera clients to join the Minecraft server
  * @param {string} rconHost - RCON server host
  * @param {number} rconPort - RCON server port
  * @param {string} rconPassword - RCON password
  * @param {number} maxRetries - Maximum number of retry attempts
  * @param {number} checkInterval - Milliseconds between checks
- * @returns {Promise<boolean>} True if both cameras found, false if timeout
+ * @param {string[]} cameraNames - Camera player names to wait for
+ * @returns {Promise<boolean>} True if all cameras found, false if timeout
  */
 async function waitForCameras(
   rconHost,
@@ -86,9 +87,8 @@ async function waitForCameras(
   rconPassword,
   maxRetries,
   checkInterval,
+  cameraNames,
 ) {
-  const cameraNames = ["CameraAlpha", "CameraBravo"];
-
   console.log(`[camera-ready] Waiting for cameras: ${cameraNames.join(", ")}`);
   console.log(
     `[camera-ready] Max retries: ${maxRetries}, check interval: ${checkInterval}ms`,

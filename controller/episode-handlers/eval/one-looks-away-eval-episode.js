@@ -21,10 +21,12 @@ function getOnOneLooksAwayPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const peerName = coordinator.getSinglePeerName();
+    const otherBotPosition = peerMap.values().next().value.position;
+    coordinator.broadcastToPeers(
       `oneLooksAwayPhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `oneLooksAwayPhase_${iterationID} beginning`,
     );
@@ -46,24 +48,24 @@ function getOnOneLooksAwayPhaseFn(
 
     switch (selectedMode) {
       case "lower_name_looks_away":
-        shouldThisBotLookAway = bot.username < args.other_bot_name;
+        shouldThisBotLookAway = bot.username < peerName;
         botsChosen = [
-          bot.username < args.other_bot_name
+          bot.username < peerName
             ? bot.username
-            : args.other_bot_name,
+            : peerName,
         ];
         break;
       case "bigger_name_looks_away":
-        shouldThisBotLookAway = bot.username > args.other_bot_name;
+        shouldThisBotLookAway = bot.username > peerName;
         botsChosen = [
-          bot.username > args.other_bot_name
+          bot.username > peerName
             ? bot.username
-            : args.other_bot_name,
+            : peerName,
         ];
         break;
       case "both_look_away":
         shouldThisBotLookAway = true;
-        botsChosen = [bot.username, args.other_bot_name].sort();
+        botsChosen = [bot.username, peerName].sort();
         break;
     }
 
@@ -149,30 +151,26 @@ function getOnOneLooksAwayPhaseFn(
     }
 
     if (iterationID == ITERATIONS_NUM_PER_EPISODE - 1) {
-      coordinator.onceEvent(
+      coordinator.exchangeWithPeers(
         "stopPhase",
+        { position: bot.entity.position.clone() },
         episodeNum,
         episodeInstance.getOnStopPhaseFn(
           bot,
           rcon,
           sharedBotRng,
           coordinator,
-          args.other_bot_name,
           episodeNum,
           args,
         ),
-      );
-      coordinator.sendToOtherBot(
-        "stopPhase",
-        bot.entity.position.clone(),
-        episodeNum,
-        `lookAwayPhase_${iterationID} end`,
+        { location: `oneLooksAwayPhase_${iterationID} end` },
       );
       return;
     }
     const nextIterationID = iterationID + 1;
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `oneLooksAwayPhase_${nextIterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnOneLooksAwayPhaseFn(
         bot,
@@ -184,12 +182,7 @@ function getOnOneLooksAwayPhaseFn(
         episodeInstance,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `oneLooksAwayPhase_${nextIterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      `oneLooksAwayPhase_${iterationID} end`,
+      { location: `oneLooksAwayPhase_${iterationID} end` },
     );
   };
 }
@@ -213,8 +206,9 @@ class OneLooksAwayEvalEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `oneLooksAwayPhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnOneLooksAwayPhaseFn(
         bot,
@@ -226,12 +220,7 @@ class OneLooksAwayEvalEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `oneLooksAwayPhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 }

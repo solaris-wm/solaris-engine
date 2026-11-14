@@ -198,19 +198,20 @@ function getOnOrbitPhaseFn(
   sharedBotRng,
   coordinator,
   iterationID,
-  otherBotName,
   episodeNum,
   episodeInstance,
   args,
   phaseDataOur,
 ) {
-  return async (phaseDataOther) => {
+  return async (peerMap) => {
+    const peerData = peerMap.values().next().value;
+    const otherBotName = coordinator.getSinglePeerName();
     const startTime = Date.now();
     console.log(
       `[${bot.username}] 🌀 ORBIT EPISODE STARTING - Episode ${episodeNum}, Iteration ${iterationID}`,
     );
 
-    coordinator.sendToOtherBot(
+    coordinator.broadcastToPeers(
       `orbitPhase_${iterationID}`,
       phaseDataOur,
       episodeNum,
@@ -219,7 +220,7 @@ function getOnOrbitPhaseFn(
 
     // Step 1: Calculate shared midpoint between both bots
     const myPosition = phaseDataOur.position;
-    const otherPosition = phaseDataOther.position;
+    const otherPosition = peerData.position;
 
     const sharedMidpoint = new Vec3(
       (myPosition.x + otherPosition.x) / 2,
@@ -269,24 +270,19 @@ function getOnOrbitPhaseFn(
 
     // Transition to stop phase
     console.log(`[${bot.username}] Transitioning to stop phase...`);
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      phaseDataOur,
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        otherBotName,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      phaseDataOur,
-      episodeNum,
-      `orbitPhase_${iterationID} end`,
+      { location: `orbitPhase_${iterationID} end` },
     );
 
     const duration = (Date.now() - startTime) / 1000;
@@ -312,13 +308,10 @@ class OrbitEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     console.log(`[${bot.username}] 🌀 Setting up orbit episode`);
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -334,8 +327,9 @@ class OrbitEpisode extends BaseEpisode {
       position: bot.entity.position.clone(),
     };
 
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `orbitPhase_${iterationID}`,
+      phaseDataOur,
       episodeNum,
       getOnOrbitPhaseFn(
         bot,
@@ -343,18 +337,12 @@ class OrbitEpisode extends BaseEpisode {
         sharedBotRng,
         coordinator,
         iterationID,
-        args.other_bot_name,
         episodeNum,
         this,
         args,
         phaseDataOur,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `orbitPhase_${iterationID}`,
-      phaseDataOur,
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 

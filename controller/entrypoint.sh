@@ -30,15 +30,13 @@ echo "[entrypoint] GLX sanity check:"
 glxinfo -B || true  # don't hard-fail; just print if available
 
 echo "[entrypoint] Launching app..."
-echo "[entrypoint] Bot config: ${BOT_NAME:-Alpha} <-> ${OTHER_BOT_NAME:-Bravo}, Ports: ${COORD_PORT:-8093}/${OTHER_COORD_PORT:-8094}, Instance: ${INSTANCE_ID:-0}"
+echo "[entrypoint] Bot config: ${BOT_NAME:-Alpha}, Coord port: ${COORD_PORT:-8093}, Peers: ${PEER_ENDPOINTS:-}, Instance: ${INSTANCE_ID:-0}"
 exec node controller/main.js \
   --bot_name "${BOT_NAME:-Alpha}" \
-  --other_bot_name "${OTHER_BOT_NAME:-Bravo}" \
   --act_recorder_host "${ACT_RECORDER_HOST:-127.0.0.1}" \
   --act_recorder_port "${ACT_RECORDER_PORT:-8091}" \
   --coord_port "${COORD_PORT:-8093}" \
-  --other_coord_host "${OTHER_COORD_HOST:-127.0.0.1}" \
-  --other_coord_port "${OTHER_COORD_PORT:-8094}" \
+  --peer_endpoints "${PEER_ENDPOINTS:-}" \
   --bot_rng_seed "${BOT_RNG_SEED:-}" \
   --episodes_num "${EPISODES_NUM:-1}" \
   --start_episode_id "${EPISODE_START_ID:-0}" \

@@ -74,9 +74,19 @@ Training episodes
 .. js:autoclass:: episode-handlers/build-tower-episode.BuildTowerEpisode
    :members:
 
+.. _api-episode-buildTowerNp:
+
+.. js:autoclass:: episode-handlers/build-tower-np-episode.BuildTowerNpEpisode
+   :members:
+
 .. _api-episode-chase:
 
 .. js:autoclass:: episode-handlers/chase-episode.ChaseEpisode
+   :members:
+
+.. _api-episode-chaseNp:
+
+.. js:autoclass:: episode-handlers/chase-np-episode.ChaseNpEpisode
    :members:
 
 .. _api-episode-collector:
@@ -122,6 +132,11 @@ Training episodes
 .. _api-episode-walkLook:
 
 .. js:autoclass:: episode-handlers/walk-look-episode.WalkLookEpisode
+   :members:
+
+.. _api-episode-walkLookNp:
+
+.. js:autoclass:: episode-handlers/walk-look-np-episode.WalkLookNpEpisode
    :members:
 
 .. _api-episode-walkLookAway:

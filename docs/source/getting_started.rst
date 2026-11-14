@@ -16,9 +16,11 @@ While we managed to run an earlier version on Windows, compatibility
 is not gauranteed. Other platforms are not tested.
 
 Performance Notes
-----------
+-----------------
 
-Based on our testing, one RTX 4090 24GB comfortably runs 4 docker instances (for a total of 8 players). We observe a VRAM usage of around 1.2 GB per docker instance. Any GPU ≥ RTX 2080 Ti is also expected to work. You need at least 4 (modern) CPU cores per instance. If you observe smooth graphics but slow loading or animation desyncs, it likely reflects a CPU bottleneck.
+Based on our testing, one RTX 4090 24GB comfortably runs 4 Docker instances at the default 2 players each (8 players total). We observe a VRAM usage of around 1.2 GB per Docker instance. Any GPU ≥ RTX 2080 Ti is also expected to work. You need at least 4 (modern) CPU cores per instance. If you observe smooth graphics but slow loading or animation desyncs, it likely reflects a CPU bottleneck.
+
+Single instances also scale beyond two players via ``--num-players N``. Two and three players work out of the box and are tested. Four to eight players are untested and need your own distinct skins, passed to :ref:`generate_compose.py <generate-compose-py>` via ``--skins`` (players are told apart by their skin, and only three are bundled). More than eight players per instance is not supported, and the eval episodes are 2-player only. NVENC supports 8 concurrent encoding sessions per GPU, so the per-GPU instance limit is ``floor(8 / N)`` (e.g. 4 instances for 2 players, 2 for 3–4 players, 1 for 5–8 players).
 
 How to Run
 ----------

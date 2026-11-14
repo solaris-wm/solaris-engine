@@ -1,6 +1,6 @@
 const { horizontalDistanceTo, initializePathfinder, lookAtBot, sleep, stopAll, stopPathfinder } = require("../primitives/movement");
 const { GoalNear } = require("../utils/bot-factory");
-const { decidePrimaryBot } = require("../utils/coordination");
+const { pickRandom } = require("../utils/coordination");
 const { BaseEpisode } = require("./base-episode");
 
 // Constants for chase behavior
@@ -247,15 +247,15 @@ function getOnChasePhaseFn(
   sharedBotRng,
   coordinator,
   iterationID,
-  otherBotName,
   episodeNum,
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    const otherBotName = coordinator.getSinglePeerName();
+    coordinator.broadcastToPeers(
       `chasePhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `chasePhase_${iterationID} beginning`,
     );
@@ -264,7 +264,8 @@ function getOnChasePhaseFn(
       `[${bot.username}] 🎬 Starting pathfinder-enhanced chase phase ${iterationID}`,
     );
 
-    const isChaser = decidePrimaryBot(bot, sharedBotRng, args);
+    const isChaser =
+      bot.username === pickRandom(coordinator.getAllPlayerNames(), sharedBotRng);
 
     console.log(
       `[${bot.username}] 🎭 I am the ${isChaser ? "🏃 CHASER" : "🏃‍♂️ RUNNER"}`,
@@ -295,24 +296,19 @@ function getOnChasePhaseFn(
     }
 
     // Transition to stop phase
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       "stopPhase",
+      { position: bot.entity.position.clone() },
       episodeNum,
       episodeInstance.getOnStopPhaseFn(
         bot,
         rcon,
         sharedBotRng,
         coordinator,
-        otherBotName,
         episodeNum,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      "stopPhase",
-      bot.entity.position.clone(),
-      episodeNum,
-      `chasePhase_${iterationID} end`,
+      { location: `chasePhase_${iterationID} end` },
     );
   };
 }
@@ -334,8 +330,9 @@ class ChaseEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `chasePhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnChasePhaseFn(
         bot,
@@ -343,17 +340,11 @@ class ChaseEpisode extends BaseEpisode {
         sharedBotRng,
         coordinator,
         iterationID,
-        args.other_bot_name,
         episodeNum,
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `chasePhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 
@@ -369,4 +360,4 @@ class ChaseEpisode extends BaseEpisode {
   }
 }
 
-module.exports = { ChaseEpisode };
+module.exports = { ChaseEpisode, chaseRunner };

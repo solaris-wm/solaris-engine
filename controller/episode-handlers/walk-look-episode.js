@@ -17,10 +17,10 @@ function getOnWalkLookPhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
-    coordinator.sendToOtherBot(
+  return async (peerMap) => {
+    coordinator.broadcastToPeers(
       `walkLookPhase_${iterationID}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `walkLookPhase_${iterationID} beginning`,
     );
@@ -43,16 +43,17 @@ function getOnWalkLookPhaseFn(
 
     // Determine if this bot should walk based on the selected mode
     let shouldThisBotWalk = false;
+    const sortedNames = coordinator.getAllPlayerNames().slice().sort();
 
     switch (selectedMode) {
       case "both_bots_walk":
         shouldThisBotWalk = true;
         break;
       case "lower_name_walks":
-        shouldThisBotWalk = bot.username < args.other_bot_name;
+        shouldThisBotWalk = bot.username === sortedNames[0];
         break;
       case "bigger_name_walks":
-        shouldThisBotWalk = bot.username > args.other_bot_name;
+        shouldThisBotWalk = bot.username === sortedNames[sortedNames.length - 1];
         break;
     }
 
@@ -63,7 +64,8 @@ function getOnWalkLookPhaseFn(
     );
 
     // Look at the other bot smoothly at the start of the phase
-    await lookAtSmooth(bot, otherBotPosition, CAMERA_SPEED_DEGREES_PER_SEC);
+    const peerPosition = peerMap.values().next().value.position;
+    await lookAtSmooth(bot, peerPosition, CAMERA_SPEED_DEGREES_PER_SEC);
 
     // Either run() or sleep() based on the mode
     if (shouldThisBotWalk) {
@@ -76,30 +78,26 @@ function getOnWalkLookPhaseFn(
     }
 
     if (iterationID == ITERATIONS_NUM_PER_EPISODE - 1) {
-      coordinator.onceEvent(
+      coordinator.exchangeWithPeers(
         "stopPhase",
+        { position: bot.entity.position.clone() },
         episodeNum,
         episodeInstance.getOnStopPhaseFn(
           bot,
           rcon,
           sharedBotRng,
           coordinator,
-          args.other_bot_name,
           episodeNum,
           args,
         ),
-      );
-      coordinator.sendToOtherBot(
-        "stopPhase",
-        bot.entity.position.clone(),
-        episodeNum,
-        `walkLookPhase_${iterationID} end`,
+        { location: `walkLookPhase_${iterationID} end` },
       );
       return;
     }
     const nextIterationID = iterationID + 1;
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `walkLookPhase_${nextIterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnWalkLookPhaseFn(
         bot,
@@ -111,12 +109,7 @@ function getOnWalkLookPhaseFn(
         episodeInstance,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `walkLookPhase_${nextIterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      `walkLookPhase_${iterationID} end`,
+      { location: `walkLookPhase_${iterationID} end` },
     );
   };
 }
@@ -138,8 +131,9 @@ class WalkLookEpisode extends BaseEpisode {
     episodeNum,
     args,
   ) {
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `walkLookPhase_${iterationID}`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getOnWalkLookPhaseFn(
         bot,
@@ -151,12 +145,7 @@ class WalkLookEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `walkLookPhase_${iterationID}`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "teleportPhase end",
+      { location: "teleportPhase end" },
     );
   }
 

@@ -62,35 +62,35 @@ def strip_timestamp_prefix(name: str) -> str:
     return TIMESTAMP_PREFIX_RE.sub("", name, count=1)
 
 
-def verify_video_paths(paths: List[Path], bot1_name: str, bot2_name: str) -> bool:
-    """Return True if the two video paths correspond to different bots.
+def verify_video_paths(paths: List[Path], bots: List[str]) -> bool:
+    """Return True if the video paths correspond to N distinct bots.
 
-    The rule is: if one path contains bot1_name, the other must contain bot2_name,
-    and vice versa. Assumes exactly two paths are provided.
+    For each bot in bots, exactly one path must contain the bot name.
+    Assumes exactly len(bots) paths are provided.
     """
-    if len(paths) != 2:
-        print(f"Video paths not equal to 2: {paths}", file=sys.stderr)
+    if len(paths) != len(bots):
+        print(f"Video paths not equal to {len(bots)}: {paths}", file=sys.stderr)
         return False
-    a = str(paths[0])
-    b = str(paths[1])
-    result = (bot1_name in a and bot2_name in b) or (bot2_name in a and bot1_name in b)
-    if not result:
-        print(
-            f"Video paths not corresponding to different bots: {a} and {b}: {paths}",
-            file=sys.stderr,
-        )
-    return result
+    for bot in bots:
+        matches = [p for p in paths if bot in str(p)]
+        if len(matches) != 1:
+            print(
+                f"Video paths not corresponding to distinct bots: {paths}",
+                file=sys.stderr,
+            )
+            return False
+    return True
 
 
-def verify_json_paths(paths: List[Path], bot1_name: str, bot2_name: str) -> bool:
+def verify_json_paths(paths: List[Path], bots: List[str]) -> bool:
     """Return True if JSON paths contain two files per bot with correct suffix pairing.
 
-    For each of bot1_name and bot2_name, there must be exactly two JSON files:
+    For each bot in bots, there must be exactly two JSON files:
     - one ending with "_episode_info.json"
     - one not ending with "_episode_info.json"
     """
-    if len(paths) != 4:
-        print(f"JSON paths not equal to 4: {paths}", file=sys.stderr)
+    if len(paths) != 2 * len(bots):
+        print(f"JSON paths not equal to {2 * len(bots)}: {paths}", file=sys.stderr)
         return False
     episode_info_suffix = "_episode_info.json"
 
@@ -102,7 +102,7 @@ def verify_json_paths(paths: List[Path], bot1_name: str, bot2_name: str) -> bool
         endswith_info = sum(str(p).endswith(episode_info_suffix) for p in bot_files)
         return endswith_info == 1
 
-    return check_for_bot(bot1_name) and check_for_bot(bot2_name)
+    return all(check_for_bot(bot) for bot in bots)
 
 
 def get_video_frame_count(video_path: Path) -> Optional[int]:
@@ -125,10 +125,8 @@ def get_json_top_level_count(json_path: Path) -> Optional[int]:
 def verify_contents_per_bot(
     video_paths: List[Path],
     json_paths_no_info: List[Path],
-    bot1_name: str,
-    bot2_name: str,
+    bots: List[str],
 ) -> bool:
-    bots = [bot1_name, bot2_name]
     for bot in bots:
         video_path = next((p for p in video_paths if bot in str(p)), None)
         json_path = next((p for p in json_paths_no_info if bot in str(p)), None)
@@ -238,8 +236,8 @@ def process_source_dir(
         video_paths = videos_by_key.get(key, [])
         json_paths = jsons_by_key.get(key, [])
         if not verify_video_paths(
-            video_paths, args.bot1_name, args.bot2_name
-        ) or not verify_json_paths(json_paths, args.bot1_name, args.bot2_name):
+            video_paths, args.bots
+        ) or not verify_json_paths(json_paths, args.bots):
             invalid_keys_because_paths.append(key)
             continue
         json_paths_no_info = [
@@ -248,8 +246,7 @@ def process_source_dir(
         if not verify_contents_per_bot(
             video_paths,
             json_paths_no_info,
-            args.bot1_name,
-            args.bot2_name,
+            args.bots,
         ):
             invalid_keys_because_contents.append(key)
             continue
@@ -370,16 +367,10 @@ def main() -> None:
         help="Optional directory in which to create the final dataset.",
     )
     parser.add_argument(
-        "--bot1-name",
-        type=str,
-        default="Alpha",
-        help="First bot name to validate in video paths (default: Alpha).",
-    )
-    parser.add_argument(
-        "--bot2-name",
-        type=str,
-        default="Bravo",
-        help="Second bot name to validate in video paths (default: Bravo).",
+        "--bots",
+        nargs="+",
+        default=["Alpha", "Bravo"],
+        help="Bot names to validate in video paths (default: Alpha Bravo).",
     )
     args = parser.parse_args()
 

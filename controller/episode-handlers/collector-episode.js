@@ -59,16 +59,16 @@ const VALUABLE_ORES = [
  *
  * @param {*} bot - Mineflayer bot instance
  * @param {Function} sharedBotRng - Shared RNG function
- * @param {Object} args - Episode arguments
+ * @param {*} coordinator - Bot coordinator instance
  * @returns {boolean} True if this bot should be the "primary" for this decision
  */
-function isMyTurn(bot, sharedBotRng, args) {
+function isMyTurn(bot, sharedBotRng, coordinator) {
   // Both bots consume the RNG
   const randomValue = sharedBotRng();
 
   // Determine role based on bot name (deterministic given same random value)
-  const botNames = [bot.username, args.other_bot_name].sort();
-  const myIndex = botNames.indexOf(bot.username);
+  const sortedNames = coordinator.getAllPlayerNames().slice().sort();
+  const myIndex = sortedNames.indexOf(bot.username);
 
   // If random < 0.5, first bot in sorted order is primary
   return randomValue < 0.5 === (myIndex === 0);
@@ -417,7 +417,6 @@ async function independentMining(bot, mcData, oreIds) {
  * @param {string} otherBotName - Name of the other bot
  * @param {number} episodeNum - Episode number
  * @param {number} cycle - Current cycle number
- * @param {Object} args - Episode arguments
  */
 async function miningPhase(
   bot,
@@ -426,7 +425,6 @@ async function miningPhase(
   otherBotName,
   episodeNum,
   cycle,
-  args,
 ) {
   console.log(`[${bot.username}] MINING PHASE`);
 
@@ -447,7 +445,7 @@ async function miningPhase(
   if (isLeaderFollowerMode) {
     // SYMMETRIC RNG CONSUMPTION: Both bots determine roles together
     // but get different results based on bot name
-    const isLeader = isMyTurn(bot, sharedBotRng, args);
+    const isLeader = isMyTurn(bot, sharedBotRng, coordinator);
     console.log(`[${bot.username}] Role: ${isLeader ? "LEADER" : "FOLLOWER"}`);
 
     if (isLeader) {
@@ -463,9 +461,9 @@ async function miningPhase(
         await bot.waitForTicks(40 - (bot.time.age - startTick));
       }
       // Signal completion to follower
-      coordinator.sendToOtherBot(
+      coordinator.broadcastToPeers(
         `done_${cycle}`,
-        bot.entity.position.clone(),
+        { position: bot.entity.position.clone() },
         episodeNum,
         "leader_done",
       );
@@ -518,15 +516,16 @@ function getCyclePhaseFn(
   episodeInstance,
   args,
 ) {
-  return async (otherBotPosition) => {
+  return async (peerMap) => {
+    const peerName = coordinator.getSinglePeerName();
     console.log(`[${bot.username}] ========================================`);
     console.log(`[${bot.username}] Cycle ${cycle}/${MAX_MINING_CYCLES}`);
     console.log(`[${bot.username}] ========================================`);
 
     // Send acknowledgment
-    coordinator.sendToOtherBot(
+    coordinator.broadcastToPeers(
       `cycle_${cycle}`,
-      bot.entity.position.clone(),
+      { position: bot.entity.position.clone() },
       episodeNum,
       `cycle_${cycle} beginning`,
     );
@@ -536,17 +535,17 @@ function getCyclePhaseFn(
       bot,
       coordinator,
       sharedBotRng,
-      args.other_bot_name,
+      peerName,
       episodeNum,
       cycle,
-      args,
     );
 
     // Set up next phase
     if (cycle < MAX_MINING_CYCLES) {
       const nextCycle = cycle + 1;
-      coordinator.onceEvent(
+      coordinator.exchangeWithPeers(
         `cycle_${nextCycle}`,
+        { position: bot.entity.position.clone() },
         episodeNum,
         getCyclePhaseFn(
           bot,
@@ -558,33 +557,23 @@ function getCyclePhaseFn(
           episodeInstance,
           args,
         ),
-      );
-      coordinator.sendToOtherBot(
-        `cycle_${nextCycle}`,
-        bot.entity.position.clone(),
-        episodeNum,
-        `cycle_${cycle} end`,
+        { location: `cycle_${cycle} end` },
       );
     } else {
       // Last cycle, set up stop phase
-      coordinator.onceEvent(
+      coordinator.exchangeWithPeers(
         "stopPhase",
+        { position: bot.entity.position.clone() },
         episodeNum,
         episodeInstance.getOnStopPhaseFn(
           bot,
           rcon,
           sharedBotRng,
           coordinator,
-          args.other_bot_name,
           episodeNum,
           args,
         ),
-      );
-      coordinator.sendToOtherBot(
-        "stopPhase",
-        bot.entity.position.clone(),
-        episodeNum,
-        `cycle_${cycle} end`,
+        { location: `cycle_${cycle} end` },
       );
 
       console.log(`[${bot.username}] ========================================`);
@@ -614,14 +603,11 @@ class CollectorEpisode extends BaseEpisode {
     episodeNum,
     args,
     botPosition,
-    otherBotPosition,
+    peerPositionsMap,
   ) {
     await ensureBotHasEnough(bot, rcon, "torch", 128);
     await unequipHand(bot);
-    return {
-      botPositionNew: botPosition,
-      otherBotPositionNew: otherBotPosition,
-    };
+    return peerPositionsMap.values().next().value;
   }
 
   async entryPoint(
@@ -641,8 +627,9 @@ class CollectorEpisode extends BaseEpisode {
 
     // Set up listener for first cycle, then send message to start
     // This follows the coordinator pattern from coordinator_readme.md
-    coordinator.onceEvent(
+    coordinator.exchangeWithPeers(
       `cycle_1`,
+      { position: bot.entity.position.clone() },
       episodeNum,
       getCyclePhaseFn(
         bot,
@@ -654,12 +641,7 @@ class CollectorEpisode extends BaseEpisode {
         this,
         args,
       ),
-    );
-    coordinator.sendToOtherBot(
-      `cycle_1`,
-      bot.entity.position.clone(),
-      episodeNum,
-      "entryPoint end",
+      { location: "entryPoint end" },
     );
   }
 
