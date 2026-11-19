@@ -37,7 +37,7 @@ EVAL_TIME_SET_DAY=${EVAL_TIME_SET_DAY:-1}
 
 # List of eval episode types to run
 # structureNoPlaceEval is used for debugging, but not part of the eval dataset
-EVAL_TYPES=("rotationEval" "translationEval" "structureEval" "turnToLookEval" "turnToLookOppositeEval" "bothLookAwayEval" "oneLooksAwayEval")
+EVAL_TYPES=("rotationEval" "translationEval" "structureEval" "turnToLookEval" "turnToLookOppositeEval" "bothLookAwayEval" "oneLooksAwayEval" "coMovementAlwaysRelativeMotionEval")
 
 for BATCH_NAME in "${EVAL_TYPES[@]}"; do
     echo "=========================================="
@@ -56,6 +56,12 @@ for BATCH_NAME in "${EVAL_TYPES[@]}"; do
         NUM_FLATLAND_WORLD=0
         NUM_NORMAL_WORLD=1
         NUM_EPISODES=32
+    fi
+
+    # Disable flatland structures (e.g. villages) for coMovementAlwaysRelativeMotionEval to avoid confusing background structures
+    FLATLAND_WORLD_DISABLE_STRUCTURES=0
+    if [ "$BATCH_NAME" == "coMovementAlwaysRelativeMotionEval" ]; then
+        FLATLAND_WORLD_DISABLE_STRUCTURES=1
     fi
 
     COMPOSE_DIR=$BATCH_DIR/compose_configs
@@ -85,8 +91,8 @@ for BATCH_NAME in "${EVAL_TYPES[@]}"; do
         --episode_types $BATCH_NAME \
         --viewer_rendering_disabled 1 \
         --gpu_mode egl \
-        --eval_time_set_day $EVAL_TIME_SET_DAY #\
-        #--flatland_world_disable_structures 1  # This is manually enabled for only structureEval to avoid confusing background structures 
+        --eval_time_set_day $EVAL_TIME_SET_DAY \
+        --flatland_world_disable_structures $FLATLAND_WORLD_DISABLE_STRUCTURES  # For structureEval this is enabled manually
 
     python3 orchestrate.py start --build --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs" --num-players $NUM_PLAYERS
     python3 orchestrate.py status --compose-dir "$COMPOSE_DIR" --logs-dir "$BATCH_DIR/logs" --num-players $NUM_PLAYERS
