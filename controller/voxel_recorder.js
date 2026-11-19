@@ -18,7 +18,7 @@ const HEADER_BYTES = 20;
  * @param {*} world - prismarine-world sync World (provides `getColumn`).
  * @param {{x:number,y:number,z:number}} center - World position to centre on.
  * @param {number} gridSize - Cube edge length in blocks.
- * @returns {{origin:[number,number,number], cells:Uint16Array}}
+ * @returns {{origin:number[], cells:Uint16Array}} `origin` is the [x, y, z] world coordinate of cube cell (0,0,0).
  */
 function captureCube(world, center, gridSize) {
   const half = Math.floor(gridSize / 2);
@@ -59,7 +59,7 @@ function captureCube(world, center, gridSize) {
  * epoch + int32 origin x/y/z + uint16 cells, all little-endian.
  *
  * @param {number} epochMs - Capture time in milliseconds since the Unix epoch.
- * @param {[number,number,number]} origin - World coordinate of cube cell (0,0,0).
+ * @param {number[]} origin - [x, y, z] world coordinate of cube cell (0,0,0).
  * @param {Uint16Array} cells - Block state ids, x outermost / z innermost.
  * @returns {Buffer}
  */
@@ -108,7 +108,7 @@ function metaPathFor(streamPath) {
  * @param {*} bot - Mineflayer bot instance.
  * @param {Object} args - Parsed config (voxel_grid, voxel_interval, output_dir,
  *   bot_name, instance_id, mc_version).
- * @returns {{start:(episodeNum:number)=>void, stop:()=>void}}
+ * @returns {{start:function(number):void, stop:function():void}} `start` takes the episode number.
  */
 function makeVoxelRecorder(bot, args) {
   const gridSize = Number(args.voxel_grid);
