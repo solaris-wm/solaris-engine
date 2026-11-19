@@ -37,7 +37,7 @@ EVAL_TIME_SET_DAY=${EVAL_TIME_SET_DAY:-1}
 
 # List of eval episode types to run
 # structureNoPlaceEval is used for debugging, but not part of the eval dataset
-EVAL_TYPES=("rotationEval" "translationEval" "structureEval" "turnToLookEval" "turnToLookOppositeEval" "bothLookAwayEval" "oneLooksAwayEval" "coMovementAlwaysRelativeMotionEval")
+EVAL_TYPES=("rotationEval" "translationEval" "structureEval" "turnToLookEval" "turnToLookOppositeEval" "bothLookAwayEval" "oneLooksAwayEval" "coMovementEval")
 
 for BATCH_NAME in "${EVAL_TYPES[@]}"; do
     echo "=========================================="
@@ -58,9 +58,9 @@ for BATCH_NAME in "${EVAL_TYPES[@]}"; do
         NUM_EPISODES=32
     fi
 
-    # Disable flatland structures (e.g. villages) for coMovementAlwaysRelativeMotionEval to avoid confusing background structures
+    # Disable flatland structures (e.g. villages) for coMovementEval to avoid confusing background structures
     FLATLAND_WORLD_DISABLE_STRUCTURES=0
-    if [ "$BATCH_NAME" == "coMovementAlwaysRelativeMotionEval" ]; then
+    if [ "$BATCH_NAME" == "coMovementEval" ]; then
         FLATLAND_WORLD_DISABLE_STRUCTURES=1
     fi
 

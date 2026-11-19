@@ -302,7 +302,7 @@ function getOnCoMovementPhaseFn(
  * move in opposite world directions and always move relative to each other.
  * @extends BaseEpisode
  */
-class CoMovementAlwaysRelativeMotionEvalEpisode extends BaseEpisode {
+class CoMovementEvalEpisode extends BaseEpisode {
   static WORKS_IN_NON_FLAT_WORLD = true;
   // Far enough that each bot still walks a judgable distance (~3-5 blocks)
   // before reaching its stop point.
@@ -413,5 +413,5 @@ class CoMovementAlwaysRelativeMotionEvalEpisode extends BaseEpisode {
 module.exports = {
   movementCase,
   lineupPlan,
-  CoMovementAlwaysRelativeMotionEvalEpisode,
+  CoMovementEvalEpisode,
 };

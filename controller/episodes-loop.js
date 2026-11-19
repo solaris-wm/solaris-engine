@@ -58,7 +58,7 @@ const {
   BothLookAwayEvalEpisode,
 } = require("./episode-handlers/eval/both-look-away-eval-episode");
 const {
-  CoMovementAlwaysRelativeMotionEvalEpisode,
+  CoMovementEvalEpisode,
 } = require("./episode-handlers/eval/co-movement-eval-episode");
 const {
   OneLooksAwayEvalEpisode,
@@ -105,7 +105,7 @@ const episodeClassMap = {
   rotationEval: RotationEvalEpisode,
   turnToLookEval: TurnToLookEvalEpisode,
   turnToLookOppositeEval: TurnToLookOppositeEvalEpisode,
-  coMovementAlwaysRelativeMotionEval: CoMovementAlwaysRelativeMotionEvalEpisode,
+  coMovementEval: CoMovementEvalEpisode,
 };
 
 /**
@@ -121,7 +121,7 @@ const evalEpisodeClasses = [
   RotationEvalEpisode,
   TurnToLookEvalEpisode,
   TurnToLookOppositeEvalEpisode,
-  CoMovementAlwaysRelativeMotionEvalEpisode,
+  CoMovementEvalEpisode,
 ];
 
 /**

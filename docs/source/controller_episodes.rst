@@ -264,8 +264,8 @@ Below are the 8 eval episode types and what they do. All of them are 2-player on
   - Camera speed: 30°/s for initial look, 90°/s for turn.
   - Minimum episode ticks: 300.
 
-:js:class:`coMovementAlwaysRelativeMotionEval <episode-handlers.eval.co-movement-eval-episode.CoMovementAlwaysRelativeMotionEvalEpisode>`
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+:js:class:`coMovementEval <episode-handlers.eval.co-movement-eval-episode.CoMovementEvalEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - **What**: Bots line up on the X or Z axis facing each other, walk towards the midpoint between them, hold still, then both move in the same egocentric direction (forward, back, left or right) at the same time. Because they face each other, they move in opposite world directions.
 - **Notable parameters**:

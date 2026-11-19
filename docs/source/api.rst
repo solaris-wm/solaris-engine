@@ -152,9 +152,9 @@ Eval episodes
 .. js:autoclass:: episode-handlers/eval/both-look-away-eval-episode.BothLookAwayEvalEpisode
    :members:
 
-.. _api-episode-coMovementAlwaysRelativeMotionEval:
+.. _api-episode-coMovementEval:
 
-.. js:autoclass:: episode-handlers/eval/co-movement-eval-episode.CoMovementAlwaysRelativeMotionEvalEpisode
+.. js:autoclass:: episode-handlers/eval/co-movement-eval-episode.CoMovementEvalEpisode
    :members:
 
 .. _api-episode-oneLooksAwayEval:

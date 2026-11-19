@@ -25,7 +25,7 @@ const episodeTypicalLengths = {
   rotationEval: 60,
   turnToLookEval: 60,
   turnToLookOppositeEval: 60,
-  coMovementAlwaysRelativeMotionEval: 60,
+  coMovementEval: 60,
 };
 
 /**

@@ -430,9 +430,9 @@ The script runs one batch per eval type:
 - ``turnToLookOppositeEval``
 - ``bothLookAwayEval``
 - ``oneLooksAwayEval``
-- ``coMovementAlwaysRelativeMotionEval``
+- ``coMovementEval``
 
-For ``turnToLookEval`` and ``turnToLookOppositeEval`` the script uses 1 normal world and 32 episodes; for the rest, it uses 2 flatland worlds and 16 episodes per type. For ``coMovementAlwaysRelativeMotionEval`` it also disables structure generation in the flatland worlds (``--flatland_world_disable_structures 1``).
+For ``turnToLookEval`` and ``turnToLookOppositeEval`` the script uses 1 normal world and 32 episodes; for the rest, it uses 2 flatland worlds and 16 episodes per type. For ``coMovementEval`` it also disables structure generation in the flatland worlds (``--flatland_world_disable_structures 1``).
 
 Output layout
 ~~~~~~~~~~~~~
