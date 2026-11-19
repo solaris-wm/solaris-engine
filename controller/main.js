@@ -13,9 +13,7 @@ const { sleep } = require("./utils/helpers");
 
 function parsePeerEndpoints(peerEndpoints) {
   if (!peerEndpoints) {
-    throw new Error(
-      "peer_endpoints is required; entrypoint must pass Name:host:port entries for all peers",
-    );
+    return [];
   }
   return peerEndpoints
     .split(",")
@@ -39,10 +37,15 @@ async function main() {
   // Parse command line arguments
   const args = parseArgs();
   const peers = parsePeerEndpoints(args.peer_endpoints);
+  if (peers.length === 0) {
+    console.log(
+      `[${args.bot_name}] No peers configured (PEER_ENDPOINTS empty) — running in single-player mode`,
+    );
+  }
 
   console.log(`Starting bot: ${args.bot_name}`);
   console.log(
-    `Coordinator: ${args.bot_name}, Port: ${args.coord_port}, Peers: ${peers.map((p) => `${p.name}@${p.host}:${p.port}`).join(",")}`,
+    `Coordinator: ${args.bot_name}, Port: ${args.coord_port}, Peers: ${peers.length ? peers.map((p) => `${p.name}@${p.host}:${p.port}`).join(",") : "(none)"}`,
   );
   console.log(
     `[${args.bot_name}] Waiting ${args.bootstrap_wait_time} seconds before creating bot...`,
@@ -72,6 +75,14 @@ async function main() {
       args,
     ),
   );
+
+  // Capture an agent-centred voxel grid each tick while an episode records.
+  if (args.record_voxels) {
+    const { makeVoxelRecorder } = require("./voxel_recorder");
+    const voxelRecorder = makeVoxelRecorder(bot, args);
+    bot.on("startepisode", (episodeNum) => voxelRecorder.start(episodeNum));
+    bot.on("endepisode", () => voxelRecorder.stop());
+  }
 
   // Handle system chat packets
   bot._client.on("packet", (data, meta) => {

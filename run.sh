@@ -16,6 +16,8 @@ DISABLE_ADVANCEMENTS=true
 ENCODER="auto" # auto, libx264, or h264_nvenc — used for camera recording and postprocess
 POSTPROCESS_WORKERS=8
 SMOKE_TEST=0
+RECORD_VOXELS=0
+EPISODE_TYPES="all"
 
 # Parse CLI args
 while [[ $# -gt 0 ]]; do
@@ -72,6 +74,14 @@ while [[ $# -gt 0 ]]; do
       SMOKE_TEST="$2"
       shift 2
       ;;
+    --record-voxels)
+      RECORD_VOXELS="$2"
+      shift 2
+      ;;
+    --episode-types)
+      EPISODE_TYPES="$2"
+      shift 2
+      ;;
     -h|--help)
       echo "Usage: $0 [OPTIONS]"
       echo "  --output-dir DIR       Base data directory (default: output)"
@@ -87,6 +97,8 @@ while [[ $# -gt 0 ]]; do
       echo "  --encoder ENCODER      Video encoder for camera recording and postprocess: auto, libx264, or h264_nvenc (default: auto). auto probes NVENC in the camera container and falls back to libx264 (postprocess uses libx264); libx264/h264_nvenc force both stages."
       echo "  --postprocess-workers N  Parallel postprocess workers (default: 8, max 8 for h264_nvenc)"
       echo "  --smoke-test 0|1       Run one episode per eligible type, alphabetical (default: 0). --num-episodes is ignored in smoke mode."
+      echo "  --record-voxels 0|1    Record an agent-centred voxel grid per episode (default: 0)"
+      echo "  --episode-types LIST   Comma-separated episode types to run, or 'all' (default: all)"
       echo "  -h, --help             Show this help"
       exit 0
       ;;
@@ -153,6 +165,8 @@ for ((i=START_BATCH; i<START_BATCH+NUM_BATCHES; i++)); do
         --num_normal_world $NUM_NORMAL_WORLD \
         --num_episodes $NUM_EPISODES \
         --eval_time_set_day 0 \
+        --record_voxels $RECORD_VOXELS \
+        --episode_types "$EPISODE_TYPES" \
         --viewer_rendering_disabled 1 \
         --gpu_mode egl \
         --disable_advancements "$DISABLE_ADVANCEMENTS" \

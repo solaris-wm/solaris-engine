@@ -111,6 +111,9 @@ class BotCoordinator extends EventEmitter {
         console.log(
           `[${this.botName} Server] Listening on port ${this.coordPort}, waiting for ${expectedPeers} peer(s) to connect...`,
         );
+        if (expectedPeers === 0) {
+          resolve(true);
+        }
       });
     });
   }
@@ -199,6 +202,14 @@ class BotCoordinator extends EventEmitter {
     const uniqueKey = `${fullEventName}_${eventId}`;
     const expectedPeers = this.peers.length;
     const peerMap = new Map();
+
+    if (expectedPeers === 0) {
+      this.executingEvents.set(uniqueKey, true);
+      Promise.resolve(handler(peerMap)).finally(() =>
+        this.executingEvents.delete(uniqueKey),
+      );
+      return;
+    }
 
     const accumulate = async (params, from) => {
       peerMap.set(from, params);

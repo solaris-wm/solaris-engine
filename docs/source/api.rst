@@ -119,6 +119,11 @@ Training episodes
 .. js:autoclass:: episode-handlers/pvp-episode.PvpEpisode
    :members:
 
+.. _api-episode-randomExplore:
+
+.. js:autoclass:: episode-handlers/random-explore-episode.RandomExploreEpisode
+   :members:
+
 .. _api-episode-straightLineWalk:
 
 .. js:autoclass:: episode-handlers/straight-line-episode.StraightLineEpisode
@@ -127,6 +132,11 @@ Training episodes
 .. _api-episode-towerBridge:
 
 .. js:autoclass:: episode-handlers/tower-bridge-episode.TowerBridgeEpisode
+   :members:
+
+.. _api-episode-walkBackward:
+
+.. js:autoclass:: episode-handlers/walk-backward-episode.WalkBackwardEpisode
    :members:
 
 .. _api-episode-walkLook:
