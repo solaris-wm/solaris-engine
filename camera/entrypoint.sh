@@ -155,6 +155,22 @@ if [ "$ENABLE_RECORDING" = "1" ]; then
     echo "[client] ============================================================"
   fi
 
+  # Recording quality: one knob, VIDEO_QUALITY, used as libx264's CRF or
+  # h264_nvenc's CQ (lower = better; 1-51, as NVENC treats CQ 0 as "automatic"). The same number gives matching
+  # dataset-video quality on both encoders (calibrated on 720p footage against
+  # a lossless capture). The encoder and quality are written to the recording
+  # metadata below, and postprocessing (process_recordings.py --encoder auto)
+  # re-encodes with the same encoder and quality, so the raw recording is never
+  # lower quality than the dataset videos cut from it. Rate control is set
+  # explicitly: with none, h264_nvenc falls back to a ~2 Mbps default bitrate.
+  VIDEO_QUALITY=${VIDEO_QUALITY:-18}
+  case "$VIDEO_QUALITY" in
+    ''|*[!0-9]*) echo "[client] ERROR: VIDEO_QUALITY must be an integer 1-51, got '${VIDEO_QUALITY}'" >&2; exit 1 ;;
+  esac
+  if [ "$VIDEO_QUALITY" -lt 1 ] || [ "$VIDEO_QUALITY" -gt 51 ]; then
+    echo "[client] ERROR: VIDEO_QUALITY must be 1-51, got ${VIDEO_QUALITY}" >&2; exit 1
+  fi
+
   # Small delay so the Minecraft window stabilizes before capturing.
   sleep "${RECORDING_DELAY:-5}"
   RECORDING_META_PATH=${RECORDING_META_PATH:-${RECORDING_PATH%.*}_meta.json}
@@ -176,6 +192,7 @@ if [ "$ENABLE_RECORDING" = "1" ]; then
   "camera_name": "${CAMERA_NAME:-}",
   "gpu_mode": "${GPU_MODE}",
   "video_encoder": "${VIDEO_ENCODER}",
+  "video_quality": ${VIDEO_QUALITY},
   "wallclock_timestamps": true,
   "note": "MKV PTS values are absolute Unix epoch timestamps. Use ffprobe to extract per-frame times."
 }
@@ -196,19 +213,19 @@ EOF
   #                                            extraction at postprocessing time).
 
   if [ "$VIDEO_ENCODER" = "h264_nvenc" ]; then
-    echo "[client] Using NVENC hardware encoding (MKV) with wallclock timestamps"
+    echo "[client] Using NVENC hardware encoding (MKV, CQ ${VIDEO_QUALITY}) with wallclock timestamps"
     ffmpeg -hide_banner -loglevel info -y \
       -use_wallclock_as_timestamps 1 \
       -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
       -copyts -vsync 0 \
-      -c:v h264_nvenc -preset p4 -bf 0 -pix_fmt yuv420p "$RECORDING_PATH" &
+      -c:v h264_nvenc -preset p5 -rc vbr -b:v 0 -cq "$VIDEO_QUALITY" -bf 0 -pix_fmt yuv420p "$RECORDING_PATH" &
   else
-    echo "[client] Using CPU encoding (libx264, MKV) with wallclock timestamps"
+    echo "[client] Using CPU encoding (libx264, MKV, CRF ${VIDEO_QUALITY}) with wallclock timestamps"
     ffmpeg -hide_banner -loglevel info -y \
       -use_wallclock_as_timestamps 1 \
       -f x11grab -video_size "${WIDTH}x${HEIGHT}" -framerate "$FPS" -i "${DISPLAY}.0" \
       -copyts -vsync 0 \
-      -codec:v libx264 -preset veryfast -bf 0 -pix_fmt yuv420p "$RECORDING_PATH" &
+      -codec:v libx264 -preset veryfast -crf "$VIDEO_QUALITY" -bf 0 -pix_fmt yuv420p "$RECORDING_PATH" &
   fi
   FFMPEG_PID=$!
   PIDS="$PIDS $FFMPEG_PID"
