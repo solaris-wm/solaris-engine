@@ -163,7 +163,7 @@ if [ "$ENABLE_RECORDING" = "1" ]; then
   # re-encodes with the same encoder and quality, so the raw recording is never
   # lower quality than the dataset videos cut from it. Rate control is set
   # explicitly: with none, h264_nvenc falls back to a ~2 Mbps default bitrate.
-  VIDEO_QUALITY=${VIDEO_QUALITY:-18}
+  VIDEO_QUALITY=${VIDEO_QUALITY:-20}  # see postprocess/video_encoding.py for the calibration
   case "$VIDEO_QUALITY" in
     ''|*[!0-9]*) echo "[client] ERROR: VIDEO_QUALITY must be an integer 1-51, got '${VIDEO_QUALITY}'" >&2; exit 1 ;;
   esac

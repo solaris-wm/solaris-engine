@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import argparse
-import functools
 import json
-import os
-import shutil
 import subprocess
-import tempfile
 import sys
 import time
 from collections import Counter
@@ -17,6 +13,16 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import cv2
+
+from video_encoding import (
+    DEFAULT_QUALITY,
+    ENCODERS,
+    H264Writer,
+    check_encoder,
+    ffmpeg_version,
+    quality_args,
+    resolve_ffmpeg,
+)
 
 
 # Unconsumed frames within this many seconds of the recording start/end are
@@ -260,91 +266,8 @@ def _match_actions_to_frames(
 # Frame extraction (shared by both modes)
 # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# ffmpeg resolution
-# ---------------------------------------------------------------------------
-#
-# The host may have several ffmpeg builds (conda env, /usr/bin, ...) that
-# differ in version and in which encoders they ship -- e.g. conda-forge's
-# "lgpl" ffmpeg builds have no libx264. Resolve one binary deterministically,
-# in this order, and verify the requested encoder actually works with it:
-#   1. $SOLARIS_FFMPEG (explicit override)
-#   2. ffmpeg next to the running Python interpreter (the pinned conda env)
-#   3. ffmpeg on PATH
-
-@functools.lru_cache(maxsize=None)
-def resolve_ffmpeg() -> str:
-    override = os.environ.get("SOLARIS_FFMPEG")
-    if override:
-        if not (os.path.isfile(override) and os.access(override, os.X_OK)):
-            raise RuntimeError(f"SOLARIS_FFMPEG={override!r} is not an executable file")
-        return override
-    env_ffmpeg = Path(sys.executable).parent / "ffmpeg"
-    if env_ffmpeg.is_file() and os.access(env_ffmpeg, os.X_OK):
-        return str(env_ffmpeg)
-    on_path = shutil.which("ffmpeg")
-    if on_path:
-        return on_path
-    raise RuntimeError(
-        "ffmpeg not found: install it into the Python environment "
-        "(conda env create -f env.yaml) or set SOLARIS_FFMPEG"
-    )
-
-
-@functools.lru_cache(maxsize=None)
-def ffmpeg_version(ffmpeg: str) -> str:
-    out = subprocess.run(
-        [ffmpeg, "-hide_banner", "-version"], capture_output=True, text=True, check=False
-    ).stdout
-    first = out.splitlines()[0] if out else ""
-    # "ffmpeg version 8.0.1 Copyright ..." -> "8.0.1"
-    parts = first.split()
-    return parts[2] if len(parts) > 2 and parts[1] == "version" else first or "unknown"
-
-
-@functools.lru_cache(maxsize=None)
-def check_encoder(ffmpeg: str, encoder: str) -> None:
-    """Fail fast with a clear message if ``encoder`` can't encode with ``ffmpeg``.
-
-    Being listed by ``ffmpeg -encoders`` isn't enough: h264_nvenc is listed on
-    builds with NVENC support even when the GPU has no NVENC hardware (A100,
-    H100), so do a tiny real test encode.
-    """
-    listed = subprocess.run(
-        [ffmpeg, "-hide_banner", "-encoders"], capture_output=True, text=True, check=False
-    ).stdout
-    if not any(line.split()[1:2] == [encoder] for line in listed.splitlines()):
-        hint = ""
-        if encoder == "libx264":
-            hint = (" (conda-forge 'lgpl' ffmpeg builds omit libx264; "
-                    "env.yaml pins a 'gpl' build)")
-        raise RuntimeError(
-            f"{ffmpeg} (ffmpeg {ffmpeg_version(ffmpeg)}) has no {encoder} encoder{hint}"
-        )
-    probe = subprocess.run(
-        [ffmpeg, "-hide_banner", "-nostats", "-loglevel", "error",
-         "-f", "lavfi", "-i", "color=black:s=256x256:r=20",
-         "-frames:v", "2", "-c:v", encoder, "-pix_fmt", "yuv420p", "-f", "null", "-"],
-        capture_output=True, text=True, check=False,
-    )
-    if probe.returncode != 0:
-        hint = (" (GPUs without NVENC hardware, e.g. A100/H100, can't use h264_nvenc; "
-                "use --encoder libx264)") if encoder == "h264_nvenc" else ""
-        raise RuntimeError(
-            f"test encode with {encoder} failed using {ffmpeg} "
-            f"(ffmpeg {ffmpeg_version(ffmpeg)}){hint}:\n{probe.stderr.strip()[-1000:]}"
-        )
-
-
-# Video quality is one knob, set at recording time (generate_compose.py
-# --video_quality -> camera/entrypoint.sh) and stored in the camera metadata as
-# "video_quality": libx264's CRF or h264_nvenc's CQ. This step re-encodes with
-# the same encoder and quality, so dataset videos never claim more quality than
-# the recording they were cut from. The same number gives matching quality on
-# both encoders: calibrated against a lossless 720p capture, record+re-encode
-# at libx264 CRF 18 and at NVENC CQ 18 both end at ~42.4 dB PSNR.
-DEFAULT_QUALITY = 18  # recordings made before the knob existed
-ENCODERS = ("libx264", "h264_nvenc")
+# Encoding (ffmpeg resolution, encoder checks, quality knob) lives in
+# video_encoding.py, shared with the other video writers.
 
 
 def resolve_encoding(requested: str, camera_meta: Dict[str, Any]) -> Tuple[str, int]:
@@ -363,56 +286,6 @@ def resolve_encoding(requested: str, camera_meta: Dict[str, Any]) -> Tuple[str, 
         encoder = requested
     quality = int(camera_meta.get("video_quality", DEFAULT_QUALITY))
     return encoder, quality
-
-
-def _quality_args(encoder: str, quality: int) -> List[str]:
-    return ["-cq" if encoder == "h264_nvenc" else "-crf", str(quality)]
-
-
-def _build_ffmpeg_cmd(
-    width: int,
-    height: int,
-    fps: float,
-    output_path: Path,
-    encoder: str,
-    quality: int,
-) -> List[str]:
-    """Build the ffmpeg command for the chosen encoder."""
-    cmd = [
-        resolve_ffmpeg(), "-y", "-nostats", "-loglevel", "error",
-        "-f", "rawvideo",
-        "-pix_fmt", "bgr24",
-        "-s", f"{width}x{height}",
-        "-r", str(fps),
-        "-i", "pipe:0",
-    ]
-
-    if encoder == "h264_nvenc":
-        cmd += [
-            "-c:v", "h264_nvenc",
-            "-preset", "p5",
-            # Explicit constant-quality rate control: NVENC's defaults differ
-            # across ffmpeg versions (some fall back to a ~2 Mbps target).
-            "-rc", "vbr", "-b:v", "0", *_quality_args(encoder, quality),
-        ]
-    else:
-        cmd += [
-            "-c:v", "libx264",
-            "-profile:v", "high",
-            *_quality_args(encoder, quality),
-            # "medium", not the camera's real-time "veryfast": this is a second
-            # generation encode, and veryfast's coarser decisions compound the
-            # recording's artifacts. On 720p Minecraft footage medium recovered
-            # ~1.2 dB PSNR at the same size, at ~20x realtime per worker.
-            "-preset", "medium",
-        ]
-
-    cmd += [
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        str(output_path),
-    ]
-    return cmd
 
 
 def _write_frames_by_index(
@@ -442,19 +315,8 @@ def _write_frames_by_index(
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    ffmpeg_cmd = _build_ffmpeg_cmd(width, height, fps, output_path, encoder, quality)
-    # stderr goes to a temp file, not a pipe: a pipe is only drained after the
-    # last frame, and a chatty ffmpeg could fill it and deadlock the encode.
-    stderr_file = tempfile.TemporaryFile()
-    ffmpeg_proc = subprocess.Popen(
-        ffmpeg_cmd,
-        stdin=subprocess.PIPE,
-        stdout=subprocess.DEVNULL,
-        stderr=stderr_file,
-    )
-    assert ffmpeg_proc.stdin is not None
+    writer = H264Writer(output_path, fps, encoder=encoder, quality=quality,
+                        size=(width, height))
 
     last_frame_idx = -1
     last_frame = None
@@ -462,53 +324,35 @@ def _write_frames_by_index(
     reads_count = 0
     cache_hits = 0
 
-    try:
-        for i, frame_idx in enumerate(frame_indices):
-            if frame_idx < 0 or frame_idx >= total_frames:
-                raise RuntimeError(
-                    f"Action {i} maps to frame {frame_idx}, but camera only has {total_frames} frames"
-                )
-
-            if frame_idx == last_frame_idx and last_frame is not None:
-                ffmpeg_proc.stdin.write(last_frame.tobytes())
-                cache_hits += 1
-            else:
-                if frame_idx != last_frame_idx + 1:
-                    cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                    seeks_count += 1
-
-                ret, frame = cap.read()
-                reads_count += 1
-
-                if not ret:
+    with writer:
+        try:
+            for i, frame_idx in enumerate(frame_indices):
+                if frame_idx < 0 or frame_idx >= total_frames:
                     raise RuntimeError(
-                        f"Failed to read frame {frame_idx} from camera recording"
+                        f"Action {i} maps to frame {frame_idx}, but camera only has {total_frames} frames"
                     )
 
-                ffmpeg_proc.stdin.write(frame.tobytes())
-                last_frame_idx = frame_idx
-                last_frame = frame.copy()
-    finally:
-        cap.release()
-        try:
-            ffmpeg_proc.stdin.close()
-        except (BrokenPipeError, OSError, ValueError):
-            pass
-        ffmpeg_proc.stdin = None
-        try:
-            ffmpeg_proc.wait(timeout=120)
-        except subprocess.TimeoutExpired:
-            ffmpeg_proc.kill()
-            ffmpeg_proc.wait()
-        stderr_file.seek(0)
-        stderr_bytes = stderr_file.read()
-        stderr_file.close()
+                if frame_idx == last_frame_idx and last_frame is not None:
+                    writer.write(last_frame)
+                    cache_hits += 1
+                else:
+                    if frame_idx != last_frame_idx + 1:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                        seeks_count += 1
 
-    if ffmpeg_proc.returncode != 0:
-        stderr_text = stderr_bytes.decode("utf-8", errors="replace")[-2000:]
-        raise RuntimeError(
-            f"FFmpeg encoding failed (rc={ffmpeg_proc.returncode}):\n{stderr_text}"
-        )
+                    ret, frame = cap.read()
+                    reads_count += 1
+
+                    if not ret:
+                        raise RuntimeError(
+                            f"Failed to read frame {frame_idx} from camera recording"
+                        )
+
+                    writer.write(frame)
+                    last_frame_idx = frame_idx
+                    last_frame = frame
+        finally:
+            cap.release()
 
     total_time = time.time() - start_time
     video_duration = len(frame_indices) / fps
@@ -657,7 +501,7 @@ def align_recording(config: AlignmentInput) -> Dict[str, Any]:
         "alignment_mode": "wallclock",
         "encoder": encoder,
         "quality": quality,
-        "encoder_args": _quality_args(encoder, quality),
+        "encoder_args": quality_args(encoder, quality),
         "camera_encoder": camera_meta.get("video_encoder"),
         "ffmpeg_path": resolve_ffmpeg(),
         "ffmpeg_version": ffmpeg_version(resolve_ffmpeg()),

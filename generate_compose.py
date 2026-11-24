@@ -153,7 +153,7 @@ def generate_compose_config(
 
     project_root = str(Path(__file__).resolve().parent)
 
-    # Unset -> the camera entrypoint's default applies.
+    # Passed to the cameras and act_recorders. Unset -> their default (20) applies.
     camera_quality_env = (
         {"VIDEO_QUALITY": str(video_quality)} if video_quality is not None else {}
     )
@@ -357,6 +357,7 @@ def generate_compose_config(
                     "INSTANCE_ID": instance_id,
                     "EPISODE_START_ID": episode_start_id,
                     "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
+                    **camera_quality_env,
                 },
                 "tty": True,
                 **({"cpuset": cpuset} if cpuset else {}),
@@ -372,6 +373,7 @@ def generate_compose_config(
                     "INSTANCE_ID": instance_id,
                     "EPISODE_START_ID": episode_start_id,
                     "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
+                    **camera_quality_env,
                 },
                 "tty": True,
                 **({"cpuset": cpuset} if cpuset else {}),
@@ -753,7 +755,7 @@ def main():
         metavar="1-51",
         help="Camera recording quality: libx264 CRF or h264_nvenc CQ (lower = better; "
         "the same number gives matching quality on both). Postprocessing reuses the "
-        "recording's encoder and quality. Default: the camera entrypoint's default (18)",
+        "recording's encoder and quality. Default: 20",
     )
 
     args = parser.parse_args()
