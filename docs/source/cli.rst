@@ -872,7 +872,7 @@ Options
      - Comma‑separated episode types for controllers.
    * - ``--viewer_rendering_disabled {0,1}``
      - ``1``
-     - Disable viewer rendering for controller/act_recorder (recommended for speed).
+     - Must be ``1``. Prismarine viewer rendering (``0``) is rejected: it only produces an unused debug video and slows the whole system. Dataset video comes from the camera.
    * - ``--smoke_test {0,1}``
      - ``0``
      - If set, enable smoke‑test mode that exercises all episode types.

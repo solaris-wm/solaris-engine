@@ -6,7 +6,8 @@ Each instance will have its own ports and output directories to avoid conflicts.
 Enhancements:
 - Support generating a mix of flatland and normal worlds via
   `--num_flatland_world` and `--num_normal_world`.
-- Add `--viewer_rendering_disabled` (default: 1) applied to act_recorder/controller.
+- `--viewer_rendering_disabled` must stay 1: prismarine viewer rendering is not
+  supported (see the check in main()).
 - Keep `--bootstrap_wait_time` unchanged as an argument.
 """
 
@@ -689,7 +690,8 @@ def main():
         type=int,
         choices=[0, 1],
         default=1,
-        help="Disable viewer rendering for act_recorder/controller (default: 1)",
+        help="Must be 1. Prismarine viewer rendering (0) is not supported: it only "
+        "produces an unused debug video and slows the whole system (default: 1)",
     )
     parser.add_argument(
         "--smoke_test",
@@ -759,6 +761,18 @@ def main():
     )
 
     args = parser.parse_args()
+    if args.viewer_rendering_disabled != 1:
+        # The controller's prismarine viewer would render every frame in
+        # software on the CPU, only to produce a debug video nothing uses
+        # (dataset video comes from the camera). It slows the whole system: in
+        # a test run it cut action recording from 20 to 2-16 fps, so most
+        # camera frames had no action. Fail before anything starts.
+        parser.error(
+            "--viewer_rendering_disabled 0 is not supported: prismarine viewer "
+            "rendering only produces an unused debug video and slows the whole "
+            "system (action recording dropped to 2-16 fps in testing). "
+            "Dataset video comes from the camera; leave this at 1."
+        )
     # Ensure required dirs are absolute
     args.output_dir = absdir(args.output_dir)
     args.data_dir = absdir(args.data_dir)

@@ -30,6 +30,7 @@ def process_frame_worker(frame_queue, output_path, viewer_rendering_disabled, ep
     first_render_time = None
     episode_start_epoch = None
     render_time_is_epoch = False
+    skipped_no_pose = 0
 
     while True:
         try:
@@ -60,6 +61,16 @@ def process_frame_worker(frame_queue, output_path, viewer_rendering_disabled, ep
             pos["relativeTimeMs"] = relative_ms
             pos["epochTime"] = epoch_time
             pos["episode_id"] = episode_id
+
+            # Before spawn, the bot has no camera pose yet: the mineflayer fork
+            # starts lastSentYaw/lastSentPitch as null and the viewer forwards
+            # them. Such frames (at most the first tick or two of an episode)
+            # carry no meaningful pose or action, so skip them on purpose.
+            # This stays after first_render_time is set, so timing remains
+            # anchored to the real first frame.
+            if pos.get("yaw") is None or pos.get("pitch") is None:
+                skipped_no_pose += 1
+                continue
 
             pos["x"] = round(pos["x"], 3)
             pos["y"] = round(pos["y"], 3)
@@ -102,6 +113,9 @@ def process_frame_worker(frame_queue, output_path, viewer_rendering_disabled, ep
                     f"  Image shape: {img.shape if hasattr(img, 'shape') else 'no shape'}"
                 )
             continue
+
+    if skipped_no_pose:
+        print(f"[act_recorder] skipped {skipped_no_pose} pre-spawn frame(s) with no pose yet")
 
     # Calculate real FPS and cap at 20
     print("Total frames processed:", len(action_data))
