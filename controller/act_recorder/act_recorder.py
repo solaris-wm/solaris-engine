@@ -4,6 +4,7 @@ import fcntl
 import json
 import os
 import socket
+import sys
 import time
 import traceback
 from datetime import datetime
@@ -13,6 +14,10 @@ from threading import Thread
 
 import cv2
 import numpy as np
+
+# Shared H.264 writer (the repo is copied into this image)
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "postprocess"))
+from video_encoding import DEFAULT_QUALITY, H264Writer  # noqa: E402
 
 HOST = ""
 PORT = 8089
@@ -112,20 +117,13 @@ def process_frame_worker(frame_queue, output_path, viewer_rendering_disabled, ep
     print("Real FPS:", real_fps)
     print("Video FPS (capped at 20):", video_fps)
 
-    # Now create video writer with calculated FPS and write all frames
-    if not viewer_rendering_disabled:
-        out = cv2.VideoWriter(
-            f"{output_path}.mp4",
-            cv2.VideoWriter_fourcc(*"mp4v"),
-            video_fps,
-            (640, 360),
-        )
-
-        for frame in frames:
-            out.write(frame)
-
-        # clean up
-        out.release()
+    # Now encode all frames with the calculated FPS (H.264 via ffmpeg; this
+    # container has no NVENC, so libx264 at the shared quality setting)
+    if not viewer_rendering_disabled and frames:
+        with H264Writer(f"{output_path}.mp4", video_fps, encoder="libx264",
+                        quality=int(os.environ.get("VIDEO_QUALITY", DEFAULT_QUALITY))) as out:
+            for frame in frames:
+                out.write(frame)
         print("Video saved to ", f"{output_path}.mp4")
     with open(output_path + ".json", "w") as f:
         json.dump(action_data, f)

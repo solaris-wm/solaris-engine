@@ -7,10 +7,10 @@ Requirements
 The engine expects a GPU Linux machine with Docker and Docker Compose installed (Ubuntu `instructions <https://docs.docker.com/engine/install/ubuntu/#install-using-the-repository>`_). Additionally,
 to give GPU access to dockers, you need to install the `NVIDIA Container Toolkit <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>`_.
 
-The system is tested to work on Ubuntu 22.04 LTS and 24.04 LTS and with CUDA versions 12.4 and 13.0. You need an NVENC-enabled GPU, e.g.
+The system is tested to work on Ubuntu 22.04 LTS and 24.04 LTS and with CUDA versions 12.4 and 13.0. An NVENC-enabled GPU is recommended, e.g.
 professional-line GPUs like the RTX 8000, RTX A6000, RTX 6000 Ada, and RTX PRO 6000 Blackwell, or gaming GPUs like the RTX 2080 Ti, RTX 3090, RTX 4090, and RTX 5090.
-Notably, ML-centric GPUs like NVIDIA A100/H100/B100/B200 will not work because they do not have NVENC support. Theoretically, all NVIDIA GPUs can be supported if NVENC
-is diabled, but we did not try this. Nevertheless, we recommend gaming-centric GPUs as they offer much better value for rendering compared to ML-centric ones.
+ML-centric GPUs like NVIDIA A100/H100 have no NVENC hardware. On them, rendering still uses the GPU, but video is encoded on the CPU (``libx264``), detected automatically, at the same quality setting.
+This costs CPU time per player. We still recommend gaming-centric GPUs, as they offer much better value for rendering compared to ML-centric ones.
 
 While we managed to run an earlier version on Windows, compatibility
 is not gauranteed. Other platforms are not tested.

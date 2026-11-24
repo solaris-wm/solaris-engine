@@ -118,6 +118,7 @@ def generate_compose_config(
     gpu_device_id: Optional[int] = None,
     gpu_mode: str = "egl",
     disable_nvenc: bool = False,
+    video_quality: Optional[int] = None,
     # Eval options
     eval_time_set_day: int = 0,
     # Flatland options
@@ -151,6 +152,11 @@ def generate_compose_config(
     )
 
     project_root = str(Path(__file__).resolve().parent)
+
+    # Passed to the cameras and act_recorders. Unset -> their default (20) applies.
+    camera_quality_env = (
+        {"VIDEO_QUALITY": str(video_quality)} if video_quality is not None else {}
+    )
 
     plugin_starter_package_json_host = os.path.join(project_root, "server", "plugin-starter", "package.json")
     # If the only episode type is turnToLookEval, use the fixed seed "solaris"
@@ -351,6 +357,7 @@ def generate_compose_config(
                     "INSTANCE_ID": instance_id,
                     "EPISODE_START_ID": episode_start_id,
                     "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
+                    **camera_quality_env,
                 },
                 "tty": True,
                 **({"cpuset": cpuset} if cpuset else {}),
@@ -366,6 +373,7 @@ def generate_compose_config(
                     "INSTANCE_ID": instance_id,
                     "EPISODE_START_ID": episode_start_id,
                     "VIEWER_RENDERING_DISABLED": viewer_rendering_disabled,
+                    **camera_quality_env,
                 },
                 "tty": True,
                 **({"cpuset": cpuset} if cpuset else {}),
@@ -401,6 +409,7 @@ def generate_compose_config(
                     "ENABLE_RECORDING": "1",
                     "RECORDING_PATH": "/output/camera_alpha.mkv",
                     "DISABLE_NVENC": "1" if disable_nvenc else "0",
+                    **camera_quality_env,
                     "RENDER_DISTANCE": render_distance,
                     "SIMULATION_DISTANCE": simulation_distance,
                     "GRAPHICS_MODE": graphics_mode,
@@ -475,6 +484,7 @@ def generate_compose_config(
                     "ENABLE_RECORDING": "1",
                     "RECORDING_PATH": "/output/camera_bravo.mkv",
                     "DISABLE_NVENC": "1" if disable_nvenc else "0",
+                    **camera_quality_env,
                     "RENDER_DISTANCE": render_distance,
                     "SIMULATION_DISTANCE": simulation_distance,
                     "GRAPHICS_MODE": graphics_mode,
@@ -543,6 +553,14 @@ def generate_compose_config(
     }
 
     return config
+
+
+def video_quality_arg(value: str) -> int:
+    q = int(value)
+    # 1-51: NVENC treats CQ 0 as "automatic", not "best".
+    if not 1 <= q <= 51:
+        raise argparse.ArgumentTypeError(f"must be 1-51, got {q}")
+    return q
 
 
 def main():
@@ -730,6 +748,15 @@ def main():
         "falls back to CPU automatically on GPUs without NVENC silicon (e.g. "
         "A100/H100). Use this to skip the probe or force CPU encoding (default: 0)",
     )
+    parser.add_argument(
+        "--video_quality",
+        type=video_quality_arg,
+        default=None,
+        metavar="1-51",
+        help="Camera recording quality: libx264 CRF or h264_nvenc CQ (lower = better; "
+        "the same number gives matching quality on both). Postprocessing reuses the "
+        "recording's encoder and quality. Default: 20",
+    )
 
     args = parser.parse_args()
     # Ensure required dirs are absolute
@@ -853,6 +880,7 @@ def main():
             gpu_device_id=gpu_device_id,
             gpu_mode=args.gpu_mode,
             disable_nvenc=bool(args.disable_nvenc),
+            video_quality=args.video_quality,
             # Eval options
             eval_time_set_day=args.eval_time_set_day,
             # Flatland options

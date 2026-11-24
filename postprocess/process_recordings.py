@@ -4,17 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
-import time
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Dict, Iterable, Optional, Tuple
-
-import cv2
-import numpy as np
-
-import argparse
-import json
 import subprocess
 import sys
 import time
@@ -24,6 +13,16 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import cv2
+
+from video_encoding import (
+    DEFAULT_QUALITY,
+    ENCODERS,
+    H264Writer,
+    check_encoder,
+    ffmpeg_version,
+    quality_args,
+    resolve_ffmpeg,
+)
 
 
 # Unconsumed frames within this many seconds of the recording start/end are
@@ -38,9 +37,8 @@ class AlignmentInput:
     camera_meta_path: Path
     output_video_path: Path
     output_metadata_path: Path
-    ffmpeg_path: str  # retained for CLI compatibility, unused internally
-    margin_start: float  # unused but kept for backward compatibility
-    margin_end: float    # unused but kept for backward compatibility
+    # "auto" = reuse the encoder the camera recorded with (from its metadata)
+    encoder: str = "auto"
 
 
 def _load_actions(path: Path) -> List[Dict[str, Any]]:
@@ -268,18 +266,44 @@ def _match_actions_to_frames(
 # Frame extraction (shared by both modes)
 # ---------------------------------------------------------------------------
 
+# Encoding (ffmpeg resolution, encoder checks, quality knob) lives in
+# video_encoding.py, shared with the other video writers.
+
+
+def resolve_encoding(requested: str, camera_meta: Dict[str, Any]) -> Tuple[str, int]:
+    """Pick (encoder, quality) for an episode.
+
+    ``requested`` is "auto" (reuse the recording's encoder) or an explicit
+    encoder. Quality always follows the recording. Recordings without the
+    metadata (older runs) fall back to libx264 at DEFAULT_QUALITY, which
+    works on any machine.
+    """
+    if requested == "auto":
+        encoder = camera_meta.get("video_encoder") or "libx264"
+        if encoder not in ENCODERS:
+            raise RuntimeError(f"camera metadata has unknown video_encoder {encoder!r}")
+    else:
+        encoder = requested
+    quality = int(camera_meta.get("video_quality", DEFAULT_QUALITY))
+    return encoder, quality
+
+
 def _write_frames_by_index(
     recording_path: Path,
     frame_indices: List[int],
     fps: float,
     output_path: Path,
+    encoder: str,
+    quality: int,
 ) -> None:
-    """Extract frames from camera recording by seeking to each frame index.
-    
-    This handles duplicate frame indices (multiple actions per frame) correctly.
+    """Extract selected frames and encode to H.264 via piped FFmpeg.
+
+    Frames are decoded with OpenCV (which handles seeking / duplicate-index
+    caching) and piped as raw BGR24 to an ``ffmpeg`` subprocess that encodes
+    with libx264 or h264_nvenc.
     """
     start_time = time.time()
-    
+
     if not frame_indices:
         raise ValueError("No frames requested for alignment")
 
@@ -290,58 +314,51 @@ def _write_frames_by_index(
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    writer = cv2.VideoWriter(str(output_path), fourcc, fps, (width, height))
-    
-    setup_time = time.time() - start_time
-    read_start = time.time()
 
-    # Read and write frames, caching the last frame to handle duplicates efficiently
+    writer = H264Writer(output_path, fps, encoder=encoder, quality=quality,
+                        size=(width, height))
+
     last_frame_idx = -1
     last_frame = None
     seeks_count = 0
     reads_count = 0
     cache_hits = 0
-    
-    for i, frame_idx in enumerate(frame_indices):
-        if frame_idx < 0 or frame_idx >= total_frames:
+
+    with writer:
+        try:
+            for i, frame_idx in enumerate(frame_indices):
+                if frame_idx < 0 or frame_idx >= total_frames:
+                    raise RuntimeError(
+                        f"Action {i} maps to frame {frame_idx}, but camera only has {total_frames} frames"
+                    )
+
+                if frame_idx == last_frame_idx and last_frame is not None:
+                    writer.write(last_frame)
+                    cache_hits += 1
+                else:
+                    if frame_idx != last_frame_idx + 1:
+                        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+                        seeks_count += 1
+
+                    ret, frame = cap.read()
+                    reads_count += 1
+
+                    if not ret:
+                        raise RuntimeError(
+                            f"Failed to read frame {frame_idx} from camera recording"
+                        )
+
+                    writer.write(frame)
+                    last_frame_idx = frame_idx
+                    last_frame = frame
+        finally:
             cap.release()
-            writer.release()
-            raise RuntimeError(
-                f"Action {i} maps to frame {frame_idx}, but camera only has {total_frames} frames"
-            )
-        
-        # Reuse cached frame if it's a duplicate
-        if frame_idx == last_frame_idx and last_frame is not None:
-            writer.write(last_frame)
-            cache_hits += 1
-        else:
-            # Only seek if we need to go backwards or skip frames
-            # For sequential reads, just continue reading
-            if frame_idx != last_frame_idx + 1:
-                cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
-                seeks_count += 1
-            
-            ret, frame = cap.read()
-            reads_count += 1
-            
-            if not ret:
-                cap.release()
-                writer.release()
-                raise RuntimeError(
-                    f"Failed to read frame {frame_idx} from camera recording"
-                )
-            
-            writer.write(frame)
-            last_frame_idx = frame_idx
-            last_frame = frame.copy()  # Cache for potential duplicates
-    
-    writer.release()
-    cap.release()
-    
+
     total_time = time.time() - start_time
-    print(f"[align] Extracted {len(frame_indices)} frames in {total_time:.1f}s")
+    video_duration = len(frame_indices) / fps
+    print(f"[align] Extracted {len(frame_indices)} frames in {total_time:.1f}s "
+          f"(seeks={seeks_count}, cache_hits={cache_hits})")
+    print(f"[align:video_duration_sec] {video_duration:.2f}")
 
 
 # ---------------------------------------------------------------------------
@@ -403,6 +420,18 @@ def align_recording(config: AlignmentInput) -> Dict[str, Any]:
     """
     actions = _load_actions(config.actions_path)
     camera_meta = _ensure_camera_meta(config.camera_meta_path)
+    encoder, quality = resolve_encoding(config.encoder, camera_meta)
+    try:
+        check_encoder(resolve_ffmpeg(), encoder)
+    except RuntimeError as exc:
+        if not (config.encoder == "auto" and encoder == "h264_nvenc"):
+            raise
+        # auto: recorded with NVENC but it is unavailable here; the quality
+        # setting gives matching quality on libx264.
+        print(f"[align] WARNING: {exc}\n[align] falling back to libx264 at the same quality",
+              file=sys.stderr)
+        encoder = "libx264"
+        check_encoder(resolve_ffmpeg(), encoder)
 
     fps = float(camera_meta["fps"])
     camera_start_time_sec = float(camera_meta["start_epoch_seconds"])
@@ -456,7 +485,8 @@ def align_recording(config: AlignmentInput) -> Dict[str, Any]:
     # Trim actions to only those that were matched
     matched_actions = actions[: len(frame_indices)]
 
-    _write_frames_by_index(recording_path, frame_indices, fps, config.output_video_path)
+    _write_frames_by_index(recording_path, frame_indices, fps, config.output_video_path,
+                           encoder, quality)
 
     action_times_sec = [float(a["epochTime"]) for a in matched_actions]
     mapping = _build_action_mapping_wallclock(
@@ -469,6 +499,13 @@ def align_recording(config: AlignmentInput) -> Dict[str, Any]:
         "recording_path": str(recording_path),
         "aligned_video_path": str(config.output_video_path),
         "alignment_mode": "wallclock",
+        "encoder": encoder,
+        "quality": quality,
+        "encoder_args": quality_args(encoder, quality),
+        "camera_encoder": camera_meta.get("video_encoder"),
+        "ffmpeg_path": resolve_ffmpeg(),
+        "ffmpeg_version": ffmpeg_version(resolve_ffmpeg()),
+        "opencv_version": cv2.__version__,
         "fps": fps,
         "camera_start_time_sec": camera_start_time_sec,
         "first_frame_time_sec": frame_timestamps[0] if frame_timestamps else None,
@@ -511,24 +548,27 @@ class BotConfig:
 
 
 def parse_args(argv: Iterable[str]) -> argparse.Namespace:
+    argv = list(argv)
+    # --check-encoder is a standalone mode that needs none of the episode inputs.
+    need_inputs = "--check-encoder" not in argv
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--actions-dir",
         type=Path,
-        required=True,
+        required=need_inputs,
         help="Directory containing Mineflayer action traces (*.json)",
     )
     parser.add_argument(
         "--camera-prefix",
         type=Path,
-        required=True,
+        required=need_inputs,
         help="Directory containing camera outputs (expects output_alpha/ and output_bravo/)",
     )
     parser.add_argument(
         "--bot",
         type=str,
         choices=["Alpha", "Bravo"],
-        required=True,
+        required=need_inputs,
         help="Which bot to process",
     )
     parser.add_argument(
@@ -543,7 +583,21 @@ def parse_args(argv: Iterable[str]) -> argparse.Namespace:
         default=None,
         help="Process single episode file (overrides directory processing)",
     )
-    return parser.parse_args(list(argv))
+    parser.add_argument(
+        "--encoder",
+        type=str,
+        default="auto",
+        choices=["auto", *ENCODERS],
+        help="Video encoder: auto reuses the encoder the camera recorded with "
+        "(from its metadata; libx264 for older recordings), or force libx264 (CPU) "
+        "/ h264_nvenc (NVIDIA GPU). Quality always follows the recording. (default: auto)",
+    )
+    parser.add_argument(
+        "--check-encoder",
+        action="store_true",
+        help="Only verify that ffmpeg can encode with --encoder (not auto), print the ffmpeg in use, and exit",
+    )
+    return parser.parse_args(argv)
 
 
 def build_bot_config(
@@ -609,6 +663,7 @@ def ensure_metadata(meta_path: Path) -> None:
 def process_actions(
     actions_dir: Path,
     configs: Dict[str, BotConfig],
+    encoder: str = "auto",
 ) -> int:
     actions_processed = 0
     for actions_path in sorted(actions_dir.glob("*.json")):
@@ -629,9 +684,7 @@ def process_actions(
             camera_meta_path=config.camera_meta,
             output_video_path=output_video,
             output_metadata_path=output_meta,
-            ffmpeg_path="ffmpeg",
-            margin_start=0.0,
-            margin_end=0.0,
+            encoder=encoder,
         )
 
         align_start = time.time()
@@ -657,6 +710,7 @@ def process_actions(
 def process_single_episode(
     episode_path: Path,
     configs: Dict[str, BotConfig],
+    encoder: str = "auto",
 ) -> bool:
     """Process a single episode file. Returns True if successful."""
     if episode_path.name.endswith("_meta.json"):
@@ -678,9 +732,7 @@ def process_single_episode(
             camera_meta_path=config.camera_meta,
             output_video_path=output_video,
             output_metadata_path=output_meta,
-            ffmpeg_path="ffmpeg",
-            margin_start=0.0,
-            margin_end=0.0,
+            encoder=encoder,
         )
 
         align_start = time.time()
@@ -702,6 +754,16 @@ def process_single_episode(
 
 def main(argv: Iterable[str]) -> int:
     args = parse_args(argv)
+    if args.check_encoder:
+        try:
+            ffmpeg = resolve_ffmpeg()
+            check_encoder(ffmpeg, args.encoder)
+        except RuntimeError as exc:
+            print(f"[align] {exc}", file=sys.stderr)
+            return 1
+        print(f"[align] encoder {args.encoder} OK with {ffmpeg} "
+              f"(ffmpeg {ffmpeg_version(ffmpeg)}, opencv {cv2.__version__})")
+        return 0
     actions_dir = resolve_actions_dir(args.actions_dir.resolve())
     configs = build_bot_config(
         actions_dir=actions_dir,
@@ -710,6 +772,14 @@ def main(argv: Iterable[str]) -> int:
         output_base=args.output_dir.resolve() if args.output_dir else None,
     )
 
+    encoder = args.encoder
+    if encoder != "auto":  # with auto, each episode checks what its recording needs
+        try:
+            check_encoder(resolve_ffmpeg(), encoder)
+        except RuntimeError as exc:
+            print(f"[align] {exc}", file=sys.stderr)
+            return 1
+
     # Single-episode fast path if provided by orchestrator
     if args.episode_file:
         episode_path = args.episode_file.resolve()
@@ -717,13 +787,13 @@ def main(argv: Iterable[str]) -> int:
             print(f"[align] episode file not found: {episode_path}", file=sys.stderr)
             return 1
         processed = process_single_episode(
-            episode_path, configs
+            episode_path, configs, encoder=encoder
         )
         return 0 if processed else 1
 
     # Otherwise process all episodes under --actions-dir
     processed = process_actions(
-        actions_dir, configs
+        actions_dir, configs, encoder=encoder
     )
     if processed == 0:
         print("[align] no action traces found; nothing to do")

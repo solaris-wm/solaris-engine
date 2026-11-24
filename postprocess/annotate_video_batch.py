@@ -33,6 +33,8 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
+from video_encoding import DEFAULT_QUALITY, H264Writer
+
 
 def parse_arguments():
     """Parse command line arguments."""
@@ -415,19 +417,11 @@ def concatenate_videos_vertically(
     out_height = alpha_h + bravo_h
     out_width = target_width
 
-    # Create video writer
-    fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-    out = cv2.VideoWriter(str(output_path), fourcc, fps, (out_width, out_height))
-
-    if not out.isOpened():
-        raise RuntimeError(f"Cannot create output video file '{output_path}'")
-
-    # Write concatenated frames
-    for alpha_frame, bravo_frame in zip(alpha_frames, bravo_frames):
-        combined = np.vstack([alpha_frame, bravo_frame])
-        out.write(combined)
-
-    out.release()
+    # H.264 via ffmpeg (libx264: runs anywhere, no NVENC session limit across workers)
+    with H264Writer(output_path, fps, encoder="libx264", quality=DEFAULT_QUALITY,
+                    size=(out_width, out_height)) as out:
+        for alpha_frame, bravo_frame in zip(alpha_frames, bravo_frames):
+            out.write(np.vstack([alpha_frame, bravo_frame]))
 
 
 def extract_video_key(video_name: str) -> Optional[str]:
