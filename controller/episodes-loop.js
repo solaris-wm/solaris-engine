@@ -49,6 +49,12 @@ const {
   PlaceAndMineEpisode,
 } = require("./episode-handlers/place-and-mine-episode");
 const {
+  RandomExploreEpisode,
+} = require("./episode-handlers/random-explore-episode");
+const {
+  WalkBackwardEpisode,
+} = require("./episode-handlers/walk-backward-episode");
+const {
   StructureEvalEpisode,
 } = require("./episode-handlers/eval/structure-eval-episode");
 const {
@@ -94,6 +100,8 @@ const episodeClassMap = {
   buildHouse: BuildHouseEpisode,
   collector: CollectorEpisode,
   placeAndMine: PlaceAndMineEpisode,
+  randomExplore: RandomExploreEpisode,
+  walkBackward: WalkBackwardEpisode,
   // Eval episodes:
   structureEval: StructureEvalEpisode,
   translationEval: TranslationEvalEpisode,
@@ -170,6 +178,13 @@ const isCustomEpisodeTypes =
 const episodeTypes = isCustomEpisodeTypes
   ? process.env.EPISODE_TYPES.split(",").map((type) => type.trim())
   : defaultEpisodeTypes;
+
+/**
+ * Episode types run instead of the default list when there is one player and
+ * EPISODE_TYPES is not set: every type in the default list needs a second player.
+ * @type {string[]}
+ */
+const singlePlayerEpisodeTypes = ["randomExplore", "walkBackward"];
 
 function formatDateForFilename(date) {
   /**
@@ -629,7 +644,10 @@ function getOnSpawnFn(bot, host, actRecorderPort, coordinator, args) {
     const worldType = (args.world_type || "flat").toLowerCase();
     const isFlatWorld = worldType === "flat";
     const needsNPlayerSupport = coordinator.getAllPlayerNames().length > 2;
-    const allEpisodeTypes = episodeTypes;
+    const allEpisodeTypes =
+      !isCustomEpisodeTypes && coordinator.getAllPlayerNames().length === 1
+        ? singlePlayerEpisodeTypes
+        : episodeTypes;
     const worldEligible = isFlatWorld
       ? allEpisodeTypes
       : allEpisodeTypes.filter(

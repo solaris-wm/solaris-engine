@@ -104,6 +104,8 @@ The controller is responsible for action recording of the playing bot. It saves 
      - Player selects hotbar slot 9.
 
 
+Optionally (``run.sh --record-voxels 1``), the controller also records the blocks around its player: 20 times per second it saves a ``48×48×48`` cube of block states centred on the player, read from the bot's own copy of the world. Together with the camera pose this gives a ground‑truth 3D state of the scene for every frame. See :ref:`Voxel file format <voxel-file-format>`.
+
 
 .. _camera:
 
@@ -141,6 +143,8 @@ tell ``ffmpeg`` to write absolute timestamps during recording via ``-use_wallclo
 An episode always consists of ``N`` actions and ``N`` observations. The observation at index ``t`` corresponds to the frame recorded at a wall-clock time at or after the action at index ``t``, 
 ensuring correct causality (observations come after actions).
 
+When voxels were recorded, the same script assigns to every aligned frame the voxel cube captured nearest in time to its action, and writes the camera pose (position, rotation, field of view) for every frame.
+
 
 .. _datasets-preparation:
 
@@ -156,6 +160,8 @@ Training
 The :ref:`prepare_train_dataset.py <prepare-train-dataset-py>` script validates and transforms the output of ``SolarisEngine``  to the final dataset format, and :ref:`split_train_test.py <split-train-test-py>` splits the dataset folder into ``train/`` and ``test/`` subfolders. The two optional scripts :ref:`detect_water_episodes_batch.py <detect-water-episodes-batch-py>` and :ref:`filter_dataset.py <filter-dataset-py>` detect episodes
 where any player is underwater by analyzing the oxygen bar HUD and excluding them from the train dataset. Lastly, the optional script :ref:`annotate_video_batch.py <annotate-video-batch-py>` stitches the videos of all players into one and overlays them with visualized actions.
 It's a helpful debug tool to see how well all bots behave in an episode and that their actions are properly aligned with the observations.
+
+If voxels were recorded, ``prepare_train_dataset.py`` copies each episode's voxel and camera pose files into the dataset next to its video and actions. The optional :ref:`render_voxels.py <render-voxels-py>` renders the voxels next to the camera video to check that the two line up.
 
 Eval
 ~~~~

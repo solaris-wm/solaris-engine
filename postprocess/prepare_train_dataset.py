@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Set
 
 import cv2
 
+from process_recordings import voxel_timestep_count
+
 EPISODE_RE = re.compile(r"\d{8}_\d{6}_(?P<episode>\d{6})(?:_|\.|$)")
 TIMESTAMP_PREFIX_RE = re.compile(r"^\d{8}_\d{6}_")
 INSTANCE_RE = re.compile(r"instance_(?P<instance>\d{3})(?:_|\.|$)")
@@ -150,6 +152,87 @@ def verify_contents_per_bot(
             )
             return False
     return True
+
+
+def _verify_voxel_count(
+    npz_path: Path,
+    key: EpisodeKey,
+    jsons_by_key: Dict[EpisodeKey, List[Path]],
+    bots: List[str],
+) -> None:
+    """Warn if a voxel file's timestep count differs from its action trace."""
+    bot = next((b for b in bots if b in npz_path.name), None)
+    if bot is None:
+        return
+    action_json = next(
+        (
+            p
+            for p in jsons_by_key.get(key, [])
+            if bot in p.name and not p.name.endswith("_episode_info.json")
+        ),
+        None,
+    )
+    if action_json is None:
+        return
+    try:
+        n_actions = get_json_top_level_count(action_json)
+        n_voxels = voxel_timestep_count(npz_path)
+    except Exception as exc:  # noqa: BLE001
+        print(f"Could not verify voxel count for {npz_path}: {exc}", file=sys.stderr)
+        return
+    if n_voxels != n_actions:
+        print(
+            f"Warning: voxel timesteps {n_voxels} != action count {n_actions} "
+            f"for {npz_path}",
+            file=sys.stderr,
+        )
+
+
+def copy_voxel_outputs(
+    aligned_dir: Path,
+    valid_keys: List[EpisodeKey],
+    jsons_by_key: Dict[EpisodeKey, List[Path]],
+    instance_ids: Optional[Set[str]],
+    destination_root: Path,
+    combined_prefix: str,
+    bots: List[str],
+) -> int:
+    """Copy per-episode voxel (.npz) and camera-state (.json) files for valid keys.
+
+    These exist only when voxel recording was enabled, so an unrecorded run
+    copies nothing.  Each voxel file's timestep count is checked against the
+    matching action trace.
+    """
+    extras_by_key: Dict[EpisodeKey, List[Path]] = defaultdict(list)
+    for entry in aligned_dir.iterdir():
+        if not entry.is_file():
+            continue
+        if not (
+            entry.name.endswith("_voxels.npz")
+            or entry.name.endswith("_camera_state.json")
+        ):
+            continue
+        key = parse_episode_and_instance(entry.name)
+        if key is None:
+            continue
+        if instance_ids is not None and key.instance_id not in instance_ids:
+            continue
+        extras_by_key[key].append(entry)
+
+    copied = 0
+    for key in sorted(set(valid_keys), key=lambda k: (k.instance_id, k.episode_id)):
+        for src in extras_by_key.get(key, []):
+            if src.name.endswith("_voxels.npz"):
+                _verify_voxel_count(src, key, jsons_by_key, bots)
+            dst_name = strip_timestamp_prefix(src.name)
+            if combined_prefix:
+                dst_name = combined_prefix + "_" + dst_name
+            dst = destination_root / dst_name
+            if dst.exists():
+                continue
+            shutil.copy2(str(src), str(dst))
+            copied += 1
+    return copied
 
 
 def process_source_dir(
@@ -312,6 +395,17 @@ def process_source_dir(
             shutil.copy2(str(src), str(dst))
             copied_jsons += 1
 
+    # Carry per-episode voxel + camera-state files (present only when recorded).
+    copied_voxels = copy_voxel_outputs(
+        aligned_dir,
+        valid_keys,
+        jsons_by_key,
+        instance_ids,
+        destination_root,
+        combined_prefix,
+        args.bots,
+    )
+
     # Report
     print(f"[{source_dir}] Completed writing to {destination_root}.")
     for inst in sorted(episodes_per_instance.keys()):
@@ -319,6 +413,8 @@ def process_source_dir(
         print(f"[{source_dir}] Instance {inst}: total episodes={total}")
     print(f"[{source_dir}] Videos copied -> total: {copied_videos}")
     print(f"[{source_dir}] JSONs copied   -> total: {copied_jsons}")
+    if copied_voxels:
+        print(f"[{source_dir}] Voxel files copied -> total: {copied_voxels}")
 
     if missing_json_keys:
         print(

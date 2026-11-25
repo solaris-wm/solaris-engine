@@ -7,7 +7,7 @@ Episode Types
 Training
 --------
 
-Below are the 14 base training episode types plus three N-player variants. The base episodes assume two participants ("one bot does X, the other observes") and run only with ``--num-players 2``. The three episode types whose name ends in ``Np`` (``chaseNp``, ``walkLookNp``, ``buildTowerNp``) are explicit N-player generalisations of their base counterparts; with more than 2 players they are the only types scheduled.
+Below are the 14 base training episode types, three N-player variants and two single-player types. The base episodes assume two participants ("one bot does X, the other observes") and run only with ``--num-players 2``. The three episode types whose name ends in ``Np`` (``chaseNp``, ``walkLookNp``, ``buildTowerNp``) are explicit N-player generalisations of their base counterparts; with more than 2 players they are the only types scheduled. The two single-player types (``randomExplore``, ``walkBackward``) do not involve a second bot. A ``--num-players 1`` run schedules them by default, because every type in the default set needs a second player; with two or more players they run only when named with ``--episode-types``.
 
 :js:class:`straightLineWalk <episode-handlers.straight-line-episode.StraightLineEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -181,6 +181,28 @@ Below are the 14 base training episode types plus three N-player variants. The b
   - Rounds per episode: 7–10.
   - Block types include: ``stone``, ``oak_planks``, ``bricks``, ``dirt``,
     ``smooth_sandstone``.
+
+:js:class:`randomExplore <episode-handlers.random-explore-episode.RandomExploreEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: The bot walks a short path, turning to face where it is going, breaks a couple of nearby blocks, then builds a tower straight up underneath itself. It changes the terrain around the player, which makes it a good source of voxel recordings (``--record-voxels 1``).
+- **Player count**: 1. Scheduled by default with ``--num-players 1``; with more players, select it with ``--episode-types``.
+- **Setup**: Gives a diamond pickaxe, a diamond shovel and 64 ``diamond_block``.
+- **Notable parameters**:
+
+  - Walk: 2 legs of 5–8 blocks, turning 30–150° left or right before each.
+  - Blocks broken: 2, visible and within 3 blocks; never the block underfoot, bedrock or leaves.
+  - Tower height: 6 blocks of ``diamond_block``.
+
+:js:class:`walkBackward <episode-handlers.walk-backward-episode.WalkBackwardEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: The bot walks backwards while looking level ahead, so the scene recedes in view. Between legs it turns to a new heading.
+- **Player count**: 1. Scheduled by default with ``--num-players 1``; with more players, select it with ``--episode-types``.
+- **Notable parameters**:
+
+  - Legs per episode: 3, each 6–10 blocks.
+  - A leg ends early when the bot backs into something (no progress for 800 ms) or after the walk timeout (5 s by default).
 
 .. _eval-episode-types:
 
