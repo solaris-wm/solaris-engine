@@ -187,7 +187,7 @@ Below are the 14 base training episode types plus three N-player variants. The b
 Eval
 ----
 
-Below are the 7 eval episode types and what they do. All of them are 2-player only.
+Below are the 8 eval episode types and what they do. All of them are 2-player only.
 
 :js:class:`structureEval <episode-handlers.eval.structure-eval-episode.StructureEvalEpisode>`
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -262,6 +262,19 @@ Below are the 7 eval episode types and what they do. All of them are 2-player on
 - **Notable parameters**:
 
   - Camera speed: 30°/s for initial look, 90°/s for turn.
+  - Minimum episode ticks: 300.
+
+:js:class:`coMovementEval <episode-handlers.eval.co-movement-eval-episode.CoMovementEvalEpisode>`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- **What**: Bots line up on the X or Z axis facing each other, walk towards the midpoint between them, hold still, then both move in the same egocentric direction (forward, back, left or right) at the same time. Because they face each other, they move in opposite world directions.
+- **Notable parameters**:
+
+  - Spawn distance: 14–18 blocks.
+  - Approach: each bot stops 4 blocks from the midpoint.
+  - Hold: 20 ticks.
+  - Movement: each bot moves 2.75 blocks left/right or 2 blocks forward/back (about twice that relative to each other, since they move in opposite world directions).
+  - Direction: ``episodeNum % 4``; the side the second bot lines up on changes every 4 episodes.
   - Minimum episode ticks: 300.
 
 .. _adding-new-episode-type:
