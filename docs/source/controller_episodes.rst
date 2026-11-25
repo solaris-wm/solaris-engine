@@ -273,7 +273,7 @@ Below are the 8 eval episode types and what they do. All of them are 2-player on
   - Spawn distance: 14–18 blocks.
   - Approach: each bot stops 4 blocks from the midpoint.
   - Hold: 20 ticks.
-  - Movement: 2.75 blocks left/right, 2 blocks forward/back.
+  - Movement: each bot moves 2.75 blocks left/right or 2 blocks forward/back (about twice that relative to each other, since they move in opposite world directions).
   - Direction: ``episodeNum % 4``; the side the second bot lines up on changes every 4 episodes.
   - Minimum episode ticks: 300.
 
