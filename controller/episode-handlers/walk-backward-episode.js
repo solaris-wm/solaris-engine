@@ -7,6 +7,8 @@ const WALK_LEGS = 3;
 const WALK_LEG_MIN_BLOCKS = 6;
 const WALK_LEG_MAX_BLOCKS = 10;
 const STUCK_MS = 800; // no progress for this long -> we've backed into something
+// Above the slowest turn: 150 degrees at 0.4x the default camera speed takes ~8 s with easing.
+const LOOK_TIMEOUT_MS = 15000;
 
 /**
  * Walk backwards while looking level ahead.  Each leg turns to a new heading,
@@ -23,12 +25,16 @@ async function walkBackwardLookingAhead(bot, legs, args, sharedBotRng) {
       // New heading: turn +/-[30,150] deg from the current facing, look level.
       const sign = sharedBotRng() < 0.5 ? -1 : 1;
       const turnRad = (sign * (30 + sharedBotRng() * 120) * Math.PI) / 180;
-      await lookSmooth(
-        bot,
-        bot.entity.yaw + turnRad,
-        0, // level pitch -- look straight ahead at the horizon
-        DEFAULT_CAMERA_SPEED_DEGREES_PER_SEC,
-      );
+      // A look that never resolves would keep the episode from reaching stopPhase.
+      await Promise.race([
+        lookSmooth(
+          bot,
+          bot.entity.yaw + turnRad,
+          0, // level pitch -- look straight ahead at the horizon
+          DEFAULT_CAMERA_SPEED_DEGREES_PER_SEC,
+        ),
+        sleep(LOOK_TIMEOUT_MS),
+      ]);
 
       const distance =
         WALK_LEG_MIN_BLOCKS +

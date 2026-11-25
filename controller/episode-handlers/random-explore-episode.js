@@ -16,6 +16,10 @@ const BREAK_COUNT = 2;
 const TOWER_HEIGHT = 6;
 const TOWER_BLOCK = "diamond_block";
 const TOWER_BLOCK_COUNT = 64;
+// Above the slowest turn: 150 degrees at 0.4x the default camera speed takes ~8 s with easing.
+const LOOK_TIMEOUT_MS = 15000;
+// LOOK_TIMEOUT_MS for digBlock's look plus its own 7 s dig limit.
+const DIG_TIMEOUT_MS = 25000;
 
 /**
  * Walk somewhere like a real player: turn to a new heading, look level ahead,
@@ -29,12 +33,16 @@ async function walkLookingAhead(bot, legs, args, sharedBotRng) {
       // New heading: turn +/-[30,150] deg from the current facing, look forward.
       const sign = sharedBotRng() < 0.5 ? -1 : 1;
       const turnRad = (sign * (30 + sharedBotRng() * 120) * Math.PI) / 180;
-      await lookSmooth(
-        bot,
-        bot.entity.yaw + turnRad,
-        0, // level pitch -- look straight ahead
-        DEFAULT_CAMERA_SPEED_DEGREES_PER_SEC,
-      );
+      // A look that never resolves would keep the episode from reaching stopPhase.
+      await Promise.race([
+        lookSmooth(
+          bot,
+          bot.entity.yaw + turnRad,
+          0, // level pitch -- look straight ahead
+          DEFAULT_CAMERA_SPEED_DEGREES_PER_SEC,
+        ),
+        sleep(LOOK_TIMEOUT_MS),
+      ]);
 
       // Walk forward toward where we're looking, for a random distance.
       const distance =
@@ -91,7 +99,8 @@ async function breakRandomBlocks(bot, count, sharedBotRng) {
     if (broken >= count) break;
     const block = bot.blockAt(pos);
     if (!block || !bot.canSeeBlock(block)) continue;
-    await digBlock(bot, pos);
+    // digBlock looks at the block with no time limit of its own.
+    await Promise.race([digBlock(bot, pos), sleep(DIG_TIMEOUT_MS)]);
     await bot.waitForTicks(4);
     broken += 1;
   }
