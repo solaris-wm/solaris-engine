@@ -25,12 +25,6 @@ from video_encoding import (
 )
 
 
-# Unconsumed frames within this many seconds of the recording start/end are
-# considered normal (the camera typically starts before and ends after the
-# episode actions).
-_BOUNDARY_GRACE_SEC = 10.0
-
-
 @dataclass
 class AlignmentInput:
     actions_path: Path
@@ -209,31 +203,30 @@ def _match_actions_to_frames(
     frame_usage = Counter(frame_indices)
     duplicate_frames = {idx: cnt for idx, cnt in frame_usage.items() if cnt > 1}
 
+    # The recording spans the whole session (several episodes plus the time
+    # between them), so the checks below only look at THIS episode's span:
+    # its first to last matched frame. Frames outside it belong to other
+    # episodes or to gaps between episodes and are expected to be unused.
+    # (frame_indices is non-decreasing: frame_ptr never moves backwards.)
+    span_lo = frame_indices[0] if frame_indices else 0
+    span_hi = frame_indices[-1] if frame_indices else -1
+
     # --- Check for interior unconsumed frames ---
-    # Frames within _BOUNDARY_GRACE_SEC of recording start/end are OK.
-    # Any other unconsumed frame is flagged.
+    # A frame inside the episode span that no action maps to: two frames fell
+    # between consecutive actions (a late action, or timing jitter).
     consumed_set = set(frame_indices)
-    rec_start = frame_timestamps[0] if frame_timestamps else 0.0
-    rec_end = frame_timestamps[-1] if frame_timestamps else 0.0
-    interior_unconsumed: List[int] = []
-    for i in range(n_frames):
-        if i in consumed_set:
-            continue
-        t = frame_timestamps[i]
-        if (t - rec_start) <= _BOUNDARY_GRACE_SEC:
-            continue  # within start grace period
-        if (rec_end - t) <= _BOUNDARY_GRACE_SEC:
-            continue  # within end grace period
-        interior_unconsumed.append(i)
+    interior_unconsumed: List[int] = [
+        i for i in range(span_lo, span_hi + 1) if i not in consumed_set
+    ]
 
     # --- Check for dropped frames (large inter-frame gaps) ---
     # A gap significantly larger than 1/fps suggests x11grab missed a frame.
     expected_interval = 1.0 / fps
     gap_threshold = expected_interval * 1.8  # e.g. 90ms for 20fps (50ms expected)
     dropped_frame_gaps: List[Dict[str, Any]] = []
-    for i in range(1, n_frames):
+    for i in range(span_lo + 1, span_hi + 1):
         gap = frame_timestamps[i] - frame_timestamps[i - 1]
-        if gap > gap_threshold and (frame_timestamps[i - 1] - rec_start) > _BOUNDARY_GRACE_SEC:
+        if gap > gap_threshold:
             dropped_frame_gaps.append({
                 "between_frames": [i - 1, i],
                 "gap_sec": round(gap, 4),
@@ -253,6 +246,7 @@ def _match_actions_to_frames(
         "min_delta_sec": min(time_deltas) if time_deltas else 0.0,
         "max_delta_sec": max(time_deltas) if time_deltas else 0.0,
         "duplicate_frame_count": len(duplicate_frames),
+        "episode_span_frames": span_hi - span_lo + 1,
         "interior_unconsumed_count": len(interior_unconsumed),
         "dropped_frame_gaps": len(dropped_frame_gaps),
     }
@@ -395,6 +389,9 @@ def _build_action_mapping_wallclock(
 # Main entry point
 # ---------------------------------------------------------------------------
 
+_INTERIOR_UNCONSUMED_WARN_FRACTION = 0.01
+
+
 def _print_wallclock_warnings(diagnostics: Dict[str, Any]) -> None:
     """Print compact warnings for alignment quality issues."""
     parts: List[str] = []
@@ -404,9 +401,14 @@ def _print_wallclock_warnings(diagnostics: Dict[str, Any]) -> None:
     dup = diagnostics.get("duplicate_frame_count", 0)
     if dup:
         parts.append(f"{dup} duplicate frame(s)")
+    # A few skipped frames are normal: actions and frames both run at ~20 Hz,
+    # so jitter occasionally puts two frames between consecutive actions.
+    # Only warn when it's a noticeable share of the episode (counts are always
+    # recorded in the metadata diagnostics).
     interior = diagnostics.get("interior_unconsumed_count", 0)
-    if interior:
-        parts.append(f"{interior} interior unconsumed frame(s)")
+    span = diagnostics.get("episode_span_frames", 0)
+    if interior and interior > _INTERIOR_UNCONSUMED_WARN_FRACTION * span:
+        parts.append(f"{interior} interior unconsumed frame(s) of {span} in the episode")
     if parts:
         print(f"[align] WARNING: {'; '.join(parts)}", file=sys.stderr)
 
